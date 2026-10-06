@@ -48,6 +48,18 @@ class MonitorComponent extends BaseComponent {
      * @param {object} descriptor Component descriptor
      */
     create(descriptor) {
+        this.initSelectors();
+        this.initPollState();
+
+        const root = descriptor.element ?? this.element;
+        this.initIdsAndFlags(descriptor, root);
+        this.initLabels(root);
+    }
+
+    /**
+     * Cache CSS selectors used throughout the component.
+     */
+    initSelectors() {
         this.selectors = {
             LASTUPDATED: '[data-region="last-updated"]',
             STALE: '[data-region="stale-indicator"]',
@@ -73,48 +85,60 @@ class MonitorComponent extends BaseComponent {
             COLUMNTOGGLE: '[data-action="toggle-column"]',
             SHOWPASSWORD: '[data-action="show-password"]',
         };
+    }
+
+    /**
+     * Initialise polling/sync state flags.
+     */
+    initPollState() {
         this.pollTimer = null;
         this.tickTimer = null;
         this.pollInFlight = false;
         this.syncInFlight = false;
         this.syncQueued = false;
         this.hasReceivedPoll = false;
-        const root = descriptor.element ?? this.element;
+    }
+
+    /**
+     * Read ids and boolean capability/visibility flags from the descriptor and dataset.
+     *
+     * @param {object} descriptor Component descriptor
+     * @param {HTMLElement} root Root element
+     */
+    initIdsAndFlags(descriptor, root) {
         this.cmid = parseInt(descriptor.cmid ?? root.dataset.cmid ?? 0, 10);
         this.groupid = parseInt(descriptor.groupid ?? root.dataset.groupid ?? 0, 10);
         this.courseId = parseInt(descriptor.courseid ?? root.dataset.courseid ?? 1, 10);
         this.showEmailColumn = root.dataset.showEmail === '1';
         this.showActionsColumn = root.dataset.showActions === '1';
-        this.initLabelsFromRoot(root);
+        this.lastUpdatedPrefix = root.dataset.lastupdatedPrefix ?? '';
+        this.canextend = root.dataset.canextend === '1';
+        this.onesessionactive = root.dataset.onesessionActive === '1';
+        this.canunblock = root.dataset.canunblock === '1';
     }
 
     /**
-     * Read UI labels and capability flags from the root element's data attributes.
+     * Read display label strings from the dataset.
      *
-     * Extracted from create() to keep ESLint complexity under the Moodle limit.
-     *
-     * @param {HTMLElement} root Monitor root element
+     * @param {HTMLElement} root Root element
      */
-    initLabelsFromRoot(root) {
-        this.lastUpdatedPrefix = root.dataset.lastupdatedPrefix ?? '';
+    initLabels(root) {
         this.extendRowLabel = root.dataset.extendRowLabel ?? 'Extend time';
         this.noteAddLabel = root.dataset.notesAddLabel ?? 'Add note';
         this.noteEditLabel = root.dataset.notesEditLabel ?? 'Edit note';
         this.actionsMenuLabel = root.dataset.actionsMenuLabel ?? 'Actions';
-        this.canextend = root.dataset.canextend === '1';
-        this.onesessionactive = root.dataset.onesessionActive === '1';
-        this.canunblock = root.dataset.canunblock === '1';
         this.unblockRowLabel = root.dataset.unblockLabel ?? 'Unblock user';
         this.blockedFlagLabel = root.dataset.blockedFlagLabel ?? 'Blocked';
         this.hiddenColumns = parseHiddenColumns(root);
-        this.userOverrideFlagLabel = root.dataset.useroverrideFlagLabel ?? 'Has extension';
-        this.userTimeOverrideFlagLabel = root.dataset.usertimeoverrideFlagLabel ?? 'Time-related override';
         this.showAttemptsLabel = root.dataset.showAttemptsLabel ?? 'Show attempts';
         this.canviewattempts = root.dataset.canviewattempts === '1';
         this.showLogsLabel = root.dataset.showLogsLabel ?? 'Show logs';
         this.canviewlogs = root.dataset.canviewlogs === '1';
         this.sortAscendingLabel = root.dataset.sortAscending ?? 'Ascending';
         this.sortDescendingLabel = root.dataset.sortDescending ?? 'Descending';
+        this.userOverrideFlagLabel = root.dataset.useroverrideFlagLabel ?? 'Has extension';
+        this.userTimeOverrideFlagLabel = root.dataset.usertimeoverrideFlagLabel ?? 'Time-related override';
+        this.groupOverrideFlagLabel = root.dataset.groupoverrideFlagLabel ?? 'With group override';
     }
 
     /**
@@ -154,6 +178,9 @@ class MonitorComponent extends BaseComponent {
             {watch: 'students.hasnote:updated', handler: this.renderStudents},
             {watch: 'students.hasuseroverride:updated', handler: this.renderStudents},
             {watch: 'students.hasusertimeoverride:updated', handler: this.renderStudents},
+            {watch: 'students.hasgroupoverride:updated', handler: this.renderStudents},
+            {watch: 'students.hasgrouptimeoverride:updated', handler: this.renderStudents},
+            {watch: 'students.hastimeoverride:updated', handler: this.renderStudents},
             {watch: 'students.isblocked:updated', handler: this.renderStudents},
             {watch: 'students.unblockactionenabled:updated', handler: this.renderStudents},
             {watch: 'meta.onesessionactive:updated', handler: this.renderStudents},
@@ -165,10 +192,11 @@ class MonitorComponent extends BaseComponent {
             {watch: 'summary.inprogress:updated', handler: this.renderBulkExtendButton},
             {watch: 'summary.completed:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.totalstudents:updated', handler: this.renderFilterToolbar},
-            {watch: 'meta.useroverridecount:updated', handler: this.renderFilterToolbar},
-            {watch: 'meta.canviewoverrides:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.sortcolumn:updated', handler: this.renderSortIndicators},
             {watch: 'meta.sortdirection:updated', handler: this.renderSortIndicators},
+            {watch: 'meta.useroverridecount:updated', handler: this.renderFilterToolbar},
+            {watch: 'meta.groupoverridecount:updated', handler: this.renderFilterToolbar},
+            {watch: 'meta.canviewoverrides:updated', handler: this.renderFilterToolbar},
         ];
     }
 
@@ -872,7 +900,10 @@ class MonitorComponent extends BaseComponent {
             hasnote: !!student.hasnote,
             hasuseroverride: !!student.hasuseroverride,
             useroverrideflaglabel: this.userOverrideFlagLabel,
+            hasgroupoverride: !!student.hasgroupoverride,
+            groupoverrideflaglabel: this.groupOverrideFlagLabel,
             hasusertimeoverride: !!student.hasusertimeoverride,
+            hastimeoverride: !!student.hastimeoverride,
             usertimeoverrideflaglabel: this.userTimeOverrideFlagLabel,
             attemptendat: student.attemptendat ?? '',
             attemptid: student.attemptid ?? '',
@@ -1063,8 +1094,8 @@ class MonitorComponent extends BaseComponent {
                 timer.textContent = '—';
             }
         }
-        this.updateUserOverrideFlag(row, student);
-        this.updateUserTimeOverrideFlag(row, student);
+        this.updateOverrideFlag(row, student);
+        this.updateTimeOverrideFlag(row, student);
         this.renderRowActions(student, row);
     }
 
@@ -1115,16 +1146,20 @@ class MonitorComponent extends BaseComponent {
             }
         });
 
+        const flagcounts = {
+            useroverride: state.meta?.useroverridecount ?? 0,
+            groupoverride: state.meta?.groupoverridecount ?? 0,
+        };
         this.element.querySelectorAll(this.selectors.FILTERFLAG).forEach((flagbtn) => {
             const flag = flagbtn.dataset.flag;
             const isActive = !!state.meta?.filters?.[flag];
             flagbtn.classList.toggle('btn-primary', isActive);
             flagbtn.classList.toggle('btn-outline-secondary', !isActive);
             flagbtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            if (flag === 'useroverride') {
-                const countEl = flagbtn.querySelector('[data-filter-count="useroverride"]');
+            if (flag in flagcounts) {
+                const countEl = flagbtn.querySelector(`[data-filter-count="${flag}"]`);
                 if (countEl) {
-                    countEl.textContent = state.meta?.useroverridecount ?? 0;
+                    countEl.textContent = flagcounts[flag];
                 }
             }
         });
@@ -1463,55 +1498,102 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
-     * Show or hide the user-override badge beside the student's name.
+     * Sync the override badges beside the student's name.
+     *
+     * Override precedence is resolved per setting, so a student can have
+     * both a user override and a (relevant) group override at once, e.g. a
+     * user override that sets only the close date alongside a group override
+     * that sets only the password. Each badge is therefore shown or removed
+     * on its own, and the user badge is kept ahead of the group badge to
+     * match student_row.mustache.
      *
      * @param {HTMLElement} row Table row element
      * @param {object} student Student state row
      */
-    updateUserOverrideFlag(row, student) {
+    updateOverrideFlag(row, student) {
         const nameCell = row.querySelector('[data-field="fullname"]');
         if (!nameCell) {
             return;
         }
-
-        let flag = nameCell.querySelector('.livequizmonitor-override-flag');
-        if (student.hasuseroverride) {
-            if (!flag) {
-                const flagTitle = this.escapeHtml(this.userOverrideFlagLabel);
-                nameCell.insertAdjacentHTML('beforeend',
-                    '<i class="fa-solid fa-user-gear livequizmonitor-override-flag" ' +
-                    `title="${flagTitle}" aria-label="${flagTitle}"></i>`
-                );
+        const badges = [
+            {
+                type: 'user',
+                show: student.hasuseroverride,
+                icon: 'fa-user-gear',
+                label: this.userOverrideFlagLabel
+            },
+            {
+                type: 'group',
+                show: student.hasgroupoverride,
+                icon: 'fa-users-gear',
+                label: this.groupOverrideFlagLabel
+            },
+        ];
+        badges.forEach(({type, show, icon, label}) => {
+            const flag = nameCell.querySelector(
+                `.livequizmonitor-override-flag[data-override-badge="${type}"]`
+            );
+            if (flag) {
+                if (!show) {
+                    // Flag is not required. Remove it.
+                    flag.remove();
+                }
+                return;
             }
-        } else if (flag) {
-            flag.remove();
-        }
+            // Flag doesn't exist. Show it if necessary.
+            if (show) {
+                const flagTitle = this.escapeHtml(label);
+                const html = `<i
+                    class="fa-solid ${icon} livequizmonitor-override-flag"
+                    data-override-badge="${type}"
+                    title="${flagTitle}"
+                    aria-label="${flagTitle}"
+                ></i>`;
+                // Keep the user badge ahead of an existing group badge.
+                const groupFlag = nameCell.querySelector(
+                    '.livequizmonitor-override-flag[data-override-badge="group"]'
+                );
+                if (type === 'user' && groupFlag) {
+                    groupFlag.insertAdjacentHTML('beforebegin', html);
+                } else {
+                    nameCell.insertAdjacentHTML('beforeend', html);
+                }
+            }
+        });
     }
 
     /**
      * Show or hide the time-related override badge beside the timer.
      *
+     * Generic: fires for a time-related override from either a user or a
+     * (relevant) group override - the badge itself doesn't distinguish
+     * which source it came from.
+     *
      * @param {HTMLElement} row Table row element
      * @param {object} student Student state row
      */
-    updateUserTimeOverrideFlag(row, student) {
+    updateTimeOverrideFlag(row, student) {
         const timeCell = row.querySelector('[data-field="timeremaining"]');
         if (!timeCell) {
             return;
         }
 
         let flag = timeCell.querySelector('.livequizmonitor-override-flag-timer');
-        if (student.hasusertimeoverride) {
-            if (!flag) {
-                const flagTitle = this.escapeHtml(this.userTimeOverrideFlagLabel);
-                timeCell.insertAdjacentHTML('beforeend',
-                    '<i class="fa-solid fa-clock livequizmonitor-override-flag livequizmonitor-override-flag-timer" ' +
-                    `title="${flagTitle}" aria-label="${flagTitle}"></i>`
-                );
-            }
-        } else if (flag) {
-            flag.remove();
+        if (!student.hastimeoverride) {
+            flag?.remove();
+            return;
         }
+
+        if (!flag) {
+            flag = document.createElement('i');
+            flag.className = 'fa-solid fa-clock livequizmonitor-override-flag livequizmonitor-override-flag-timer';
+            timeCell.append(flag);
+        }
+
+        // The label depends on whether the time override comes from a user override, a group override, or both.
+        const label = student.timeoverrideflaglabel || this.userTimeOverrideFlagLabel;
+        flag.setAttribute('title', label);
+        flag.setAttribute('aria-label', label);
     }
 
     /**

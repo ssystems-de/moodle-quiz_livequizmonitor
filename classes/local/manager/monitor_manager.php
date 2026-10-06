@@ -177,18 +177,48 @@ class monitor_manager {
         }
 
         $useroverridecount = 0;
+        $groupoverridecount = 0;
         $canviewoverrides = overrides_manager::user_can_view_overrides($context);
         if ($canviewoverrides) {
-            $useroverridemap = overrides_manager::get_user_override_map((int) $quiz->id, $userids);
+            // Tooltips for the timer badge, depending on where the time override comes from.
+            $timeoverridelabels = [
+                'user' => get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor'),
+                'group' => get_string('filter:grouptimeoverrideflag', 'quiz_livequizmonitor'),
+                'userandgroup' => get_string('filter:userandgrouptimeoverrideflag', 'quiz_livequizmonitor'),
+            ];
+            // Fetch the override map for all students in the monitor.
+            $overridemap = overrides_manager::get_override_map(
+                (int) $quiz->id,
+                $userids
+            );
             foreach ($rows as $row) {
-                $flags = $useroverridemap[$row->userid] ?? null;
-                $row->hasuseroverride = ($flags && !empty($flags->hasoverride));
-                $row->hasusertimeoverride = ($flags && !empty($flags->hastimeoverride));
+                // Set boolean flags for this row.
+                $flags = $overridemap[$row->userid] ?? null;
+                $row->hasuseroverride = $flags->hasuseroverride ?? false;
+                $row->hasgroupoverride = $flags->hasgroupoverride ?? false;
+                $row->hastimeoverride = $flags->hastimeoverride ?? false;
+                $row->hasusertimeoverride = $flags->hasusertimeoverride ?? false;
+                $row->hasgrouptimeoverride = $flags->hasgrouptimeoverride ?? false;
+
+                // Set the timer badge tooltip for this row.
+                if ($row->hasusertimeoverride && $row->hasgrouptimeoverride) {
+                    $row->timeoverrideflaglabel = $timeoverridelabels['userandgroup'];
+                } else if ($row->hasusertimeoverride) {
+                    $row->timeoverrideflaglabel = $timeoverridelabels['user'];
+                } else if ($row->hasgrouptimeoverride) {
+                    $row->timeoverrideflaglabel = $timeoverridelabels['group'];
+                } else {
+                    $row->timeoverrideflaglabel = '';
+                }
+
+                // Update override counts, if necessary.
+                if ($row->hasuseroverride) {
+                    $useroverridecount++;
+                }
+                if ($row->hasgroupoverride) {
+                    $groupoverridecount++;
+                }
             }
-            $useroverridecount = count(array_filter(
-                $useroverridemap,
-                static fn(bool|stdClass $flags): bool => ($flags && $flags->hasoverride)
-            ));
         }
 
         $onesessionactive = onesession_manager::is_active_for_quiz((int) $quiz->id, $quiz);
@@ -234,6 +264,7 @@ class monitor_manager {
             'sortdirection' => $sortdirection,
             'canviewoverrides' => $canviewoverrides,
             'useroverridecount' => $useroverridecount,
+            'groupoverridecount' => $groupoverridecount,
         ];
 
         return $state;
@@ -473,6 +504,9 @@ class monitor_manager {
             'hasnote' => false,
             'hasuseroverride' => false,
             'hasusertimeoverride' => false,
+            'hasgroupoverride' => false,
+            'hasgrouptimeoverride' => false,
+            'hastimeoverride' => false,
             'isblocked' => false,
             'unblockactionenabled' => false,
         ];

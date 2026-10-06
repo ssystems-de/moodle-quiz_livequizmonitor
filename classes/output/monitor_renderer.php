@@ -69,10 +69,11 @@ class monitor_renderer extends plugin_renderer_base {
             $student['extendrowlabel'] = get_string('extend:rowaction', 'quiz_livequizmonitor');
             $student['unblocklabel'] = get_string('onesession:unblocklabel', 'quiz_livequizmonitor');
             $student['blockedflaglabel'] = get_string('onesession:blockedflag', 'quiz_livequizmonitor');
-            $student['useroverrideflaglabel'] = get_string('filter:useroverrideflag', 'quiz_livequizmonitor');
-            $student['usertimeoverrideflaglabel'] = get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor');
             $student['showattemptslabel'] = get_string('attempts:showlabel', 'quiz_livequizmonitor');
             $student['showlogslabel'] = get_string('logs:showlabel', 'quiz_livequizmonitor');
+            $student['useroverrideflaglabel'] = get_string('filter:useroverrideflag', 'quiz_livequizmonitor');
+            $student['usertimeoverrideflaglabel'] = get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor');
+            $student['groupoverrideflaglabel'] = get_string('filter:groupoverrideflag', 'quiz_livequizmonitor');
             $students[] = $student;
         }
 
@@ -109,10 +110,11 @@ class monitor_renderer extends plugin_renderer_base {
             'noteseditlabel' => get_string('notes:editlabel', 'quiz_livequizmonitor'),
             'unblocklabel' => get_string('onesession:unblocklabel', 'quiz_livequizmonitor'),
             'blockedflaglabel' => get_string('onesession:blockedflag', 'quiz_livequizmonitor'),
-            'useroverrideflaglabel' => get_string('filter:useroverrideflag', 'quiz_livequizmonitor'),
-            'usertimeoverrideflaglabel' => get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor'),
             'showattemptslabel' => get_string('attempts:showlabel', 'quiz_livequizmonitor'),
             'showlogslabel' => get_string('logs:showlabel', 'quiz_livequizmonitor'),
+            'useroverrideflaglabel' => get_string('filter:useroverrideflag', 'quiz_livequizmonitor'),
+            'usertimeoverrideflaglabel' => get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor'),
+            'groupoverrideflaglabel' => get_string('filter:groupoverrideflag', 'quiz_livequizmonitor'),
             'actionsmenulabel' => get_string('actions'),
             'tableheaders' => $tableheaders,
             'columns' => $this->export_columns($state, $tableheaders),
@@ -220,9 +222,12 @@ class monitor_renderer extends plugin_renderer_base {
         $summary = $state->summary;
 
         return [
+            'filterslabel' => get_string('filter:filterslabel', 'quiz_livequizmonitor'),
+            'labelsep' => get_string('labelsep', 'langconfig'),
+            'resetalllabel' => get_string('filter:resetall', 'quiz_livequizmonitor'),
+            'namelabel' => get_string('filter:namelabel', 'quiz_livequizmonitor'),
             'searchplaceholder' => get_string('filter:searchplaceholder', 'quiz_livequizmonitor'),
-            'clearlabel' => get_string('filter:clear', 'quiz_livequizmonitor'),
-            'chipsgrouplabel' => get_string('filter:toolbarlabel', 'quiz_livequizmonitor'),
+            'statuslabel' => get_string('filter:statuslabel', 'quiz_livequizmonitor'),
             'chips' => [
                 [
                     'status' => 'all',
@@ -256,9 +261,13 @@ class monitor_renderer extends plugin_renderer_base {
                 ],
             ],
             'canviewoverrides' => !empty($state->canviewoverrides),
+            'overridesgrouplabel' => get_string('filter:overridesgrouplabel', 'quiz_livequizmonitor'),
             'useroverridelabel' => get_string('filter:useroverride', 'quiz_livequizmonitor'),
             'useroverridecount' => $state->useroverridecount ?? 0,
             'useroverrideactive' => false,
+            'groupoverridelabel' => get_string('filter:groupoverride', 'quiz_livequizmonitor'),
+            'groupoverridecount' => $state->groupoverridecount ?? 0,
+            'groupoverrideactive' => false,
         ];
     }
 }

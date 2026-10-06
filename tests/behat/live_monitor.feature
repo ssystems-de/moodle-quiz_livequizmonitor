@@ -52,7 +52,7 @@ Feature: Live quiz monitor report
   Scenario: Clear filters restores the full student list
     Given I am on the live monitor report for "Quiz 1"
     When I set the field "Search students…" to "Sam"
-    And I click on "Clear filters" "button"
+    And I click on "Reset all filters" "button"
     Then I should see "Sam Student"
     And I should see "Alex Other"
 

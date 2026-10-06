@@ -24,9 +24,13 @@
         "notelabel": "Add note",
         "hasnote": false,
         "hasuseroverride": false,
-        "useroverrideflaglabel": "This student has a quiz extension (user override)",
+        "useroverrideflaglabel": "This student has a user override",
+        "hasgroupoverride": false,
+        "groupoverrideflaglabel": "This student has a group override",
         "hasusertimeoverride": false,
-        "usertimeoverrideflaglabel": "This student has a time-related override (open/close time or time limit)",
+        "hasgrouptimeoverride": false,
+        "hastimeoverride": false,
+        "timeoverrideflaglabel": "This student has a time-related user override",
         "canextend": true,
         "extendrowlabel": "Extend time",
         "extendactionenabled": true,
@@ -47,10 +51,15 @@
     <td data-column="student" data-field="fullname">
         <span data-colcontent="student">{{fullname}}</span>
         {{#hasuseroverride}}
-        <i class="fa-solid fa-user-gear livequizmonitor-override-flag"
+        <i class="fa-solid fa-user-gear livequizmonitor-override-flag" data-override-badge="user"
            title="{{useroverrideflaglabel}}"
            aria-label="{{useroverrideflaglabel}}"></i>
         {{/hasuseroverride}}
+        {{#hasgroupoverride}}
+        <i class="fa-solid fa-users-gear livequizmonitor-override-flag" data-override-badge="group"
+           title="{{groupoverrideflaglabel}}"
+           aria-label="{{groupoverrideflaglabel}}"></i>
+        {{/hasgroupoverride}}
     </td>
     {{#showemailcolumn}}
     <td data-column="email"><span data-colcontent="email">{{email}}</span></td>
@@ -77,11 +86,11 @@
         {{^hastimer}}
         <span class="livequizmonitor-timer" data-field="timer" data-colcontent="timeremaining">—</span>
         {{/hastimer}}
-        {{#hasusertimeoverride}}
+        {{#hastimeoverride}}
         <i class="fa-solid fa-clock livequizmonitor-override-flag livequizmonitor-override-flag-timer"
-           title="{{usertimeoverrideflaglabel}}"
-           aria-label="{{usertimeoverrideflaglabel}}"></i>
-        {{/hasusertimeoverride}}
+           title="{{timeoverrideflaglabel}}"
+           aria-label="{{timeoverrideflaglabel}}"></i>
+        {{/hastimeoverride}}
     </td>
     {{#showactionscolumn}}
     <td class="livequizmonitor-actions" data-column="actions" data-field="actions">

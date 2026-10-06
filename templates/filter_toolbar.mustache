@@ -1,14 +1,21 @@
 {{!
     @template quiz_livequizmonitor/filter_toolbar
 
-    Filter toolbar for the live quiz monitor.
+    Filter toolbar for the live quiz monitor, structured as labelled filter
+    groups (Name, Status, Overrides, ...) that wrap onto new lines as space
+    allows, similar to a ribbon/office-style toolbar. The Group filter is a
+    planned future addition - the markup/CSS here is written so a new
+    ".livequizmonitor-filter-group" can be added without further rework.
 
     Example context (json):
     {
         "filter": {
-            "chipsgrouplabel": "Filter students",
+            "filterslabel": "Filters",
+            "labelsep": ": ",
+            "resetalllabel": "Reset all filters",
+            "namelabel": "Name",
             "searchplaceholder": "Search students",
-            "clearlabel": "Clear filters",
+            "statuslabel": "Status",
             "chips": [
                 {"status": "notstarted", "label": "Not started", "count": 2, "active": false},
                 {"status": "idle", "label": "Idle", "count": 1, "active": false},
@@ -16,41 +23,71 @@
                 {"status": "completed", "label": "Completed", "count": 0, "active": false}
             ],
             "canviewoverrides": true,
+            "overridesgrouplabel": "Overrides",
             "useroverridelabel": "Has extension",
             "useroverridecount": 1,
-            "useroverrideactive": false
+            "useroverrideactive": false,
+            "groupoverridelabel": "With group override",
+            "groupoverridecount": 1,
+            "groupoverrideactive": false
         }
     }
 }}
-<div class="livequizmonitor-filter-toolbar mb-3" data-region="filter-toolbar">
-    <div class="livequizmonitor-filter-toolbar-row d-flex flex-wrap align-items-center" role="toolbar" aria-label="{{filter.chipsgrouplabel}}">
-        <div class="livequizmonitor-search-card flex-grow-0">
-            <input type="search"
-                   class="livequizmonitor-search-input"
-                   data-action="search"
-                   placeholder="{{filter.searchplaceholder}}"
-                   aria-label="{{filter.searchplaceholder}}">
-        </div>
-        {{#filter.chips}}
-            <button type="button"
-                    class="btn{{#active}} btn-primary{{/active}}{{^active}} btn-outline-secondary{{/active}}"
-                    data-action="filter-status"
-                    data-status="{{status}}"
-                    aria-pressed="{{#active}}true{{/active}}{{^active}}false{{/active}}">
-                {{label}} (<span data-filter-count="{{status}}">{{count}}</span>)
-            </button>
-        {{/filter.chips}}
-        {{#filter.canviewoverrides}}
-            <button type="button"
-                    class="btn{{#filter.useroverrideactive}} btn-primary{{/filter.useroverrideactive}}{{^filter.useroverrideactive}} btn-outline-secondary{{/filter.useroverrideactive}}"
-                    data-action="filter-flag"
-                    data-flag="useroverride"
-                    aria-pressed="{{#filter.useroverrideactive}}true{{/filter.useroverrideactive}}{{^filter.useroverrideactive}}false{{/filter.useroverrideactive}}">
-                {{filter.useroverridelabel}} (<span data-filter-count="useroverride">{{filter.useroverridecount}}</span>)
-            </button>
-        {{/filter.canviewoverrides}}
-        <button type="button" class="btn btn-outline-secondary" data-action="clear-filters">
-            {{filter.clearlabel}}
+<div class="livequizmonitor-filter-toolbar bg-secondary rounded mb-3 py-1 px-1" data-region="filter-toolbar">
+    <div class="livequizmonitor-filter-toolbar-header">
+        <button type="button" class="btn btn-dark btn-sm" data-action="clear-filters">
+            {{filter.resetalllabel}}
         </button>
+    </div>
+    <div class="livequizmonitor-filter-groups d-flex flex-wrap align-items-center mx-1" role="toolbar" aria-label="{{filter.filterslabel}}">
+        <div class="livequizmonitor-filter-group" data-filter-group="name">
+            <span class="livequizmonitor-filter-group-label" id="livequizmonitor-filter-group-name-label">
+                {{filter.namelabel}}{{filter.labelsep}}
+            </span>
+            <div class="livequizmonitor-filter-group-controls">
+                <div class="livequizmonitor-search-card">
+                    <input type="search"
+                           class="livequizmonitor-search-input"
+                           data-action="search"
+                           placeholder="{{filter.searchplaceholder}}"
+                           aria-labelledby="livequizmonitor-filter-group-name-label">
+                </div>
+            </div>
+        </div>
+        <div class="livequizmonitor-filter-group" data-filter-group="status">
+            <span class="livequizmonitor-filter-group-label">{{filter.statuslabel}}{{filter.labelsep}}</span>
+            <div class="livequizmonitor-filter-group-controls">
+                {{#filter.chips}}
+                    <button type="button"
+                            class="btn{{#active}} btn-primary{{/active}}{{^active}} btn-outline-secondary{{/active}}"
+                            data-action="filter-status"
+                            data-status="{{status}}"
+                            aria-pressed="{{#active}}true{{/active}}{{^active}}false{{/active}}">
+                        {{label}} (<span data-filter-count="{{status}}">{{count}}</span>)
+                    </button>
+                {{/filter.chips}}
+            </div>
+        </div>
+        {{#filter.canviewoverrides}}
+        <div class="livequizmonitor-filter-group" data-filter-group="overrides">
+            <span class="livequizmonitor-filter-group-label">{{filter.overridesgrouplabel}}{{filter.labelsep}}</span>
+            <div class="livequizmonitor-filter-group-controls">
+                <button type="button"
+                        class="btn{{#filter.useroverrideactive}} btn-primary{{/filter.useroverrideactive}}{{^filter.useroverrideactive}} btn-outline-secondary{{/filter.useroverrideactive}}"
+                        data-action="filter-flag"
+                        data-flag="useroverride"
+                        aria-pressed="{{#filter.useroverrideactive}}true{{/filter.useroverrideactive}}{{^filter.useroverrideactive}}false{{/filter.useroverrideactive}}">
+                    {{filter.useroverridelabel}} (<span data-filter-count="useroverride">{{filter.useroverridecount}}</span>)
+                </button>
+                <button type="button"
+                        class="btn{{#filter.groupoverrideactive}} btn-primary{{/filter.groupoverrideactive}}{{^filter.groupoverrideactive}} btn-outline-secondary{{/filter.groupoverrideactive}}"
+                        data-action="filter-flag"
+                        data-flag="groupoverride"
+                        aria-pressed="{{#filter.groupoverrideactive}}true{{/filter.groupoverrideactive}}{{^filter.groupoverrideactive}}false{{/filter.groupoverrideactive}}">
+                    {{filter.groupoverridelabel}} (<span data-filter-count="groupoverride">{{filter.groupoverridecount}}</span>)
+                </button>
+            </div>
+        </div>
+        {{/filter.canviewoverrides}}
     </div>
 </div>

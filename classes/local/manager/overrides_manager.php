@@ -35,13 +35,6 @@ use context_module;
  */
 class overrides_manager {
     /**
-     * Columns in {quiz_overrides} that represent an id in another table.
-     *
-     * @var string[] columns that hold ids
-     */
-    protected const ID_COLUMNS = ['userid', 'groupid'];
-
-    /**
      * Columns on {quiz_overrides} that represent an actual override value.
      *
      * A row only counts as "having an override" if at least one of these
@@ -71,81 +64,115 @@ class overrides_manager {
     }
 
     /**
-     * Load has-override flags for a set of users, keyed by a given column.
+     * Load has-override flags for a set of users, keyed by userid.
+     *
+     * As in core, precedence is resolved per setting: a user override takes
+     * precedence over group overrides only for the settings it actually sets.
+     * Any setting the user override leaves unset falls through to the overrides
+     * of every group the student belongs to.
      *
      * @param int $quizid Quiz instance id.
-     * @param string $idcolumn One of the ID_COLUMNS.
-     * @param int[] $ids User ids or group ids to check.
-     * @param string[] $valuecolumns Which VALUE_COLUMNS count as "a value". Defaults to all of them.
-     * @return array<int, bool|stdClass> Map id => object containing boolean override flags.
+     * @param int[] $userids User ids to check.
+     * @return array<int, bool|\stdClass> Map userid => false, or an object of override flags.
      */
-    protected static function get_override_map(
-        int $quizid,
-        string $idcolumn,
-        array $ids,
-        array $valuecolumns = self::VALUE_COLUMNS
-    ): array {
+    public static function get_override_map(int $quizid, array $userids): array {
         global $DB;
 
-        $map = array_fill_keys($ids, false);
-        if ($ids === [] || !in_array($idcolumn, self::ID_COLUMNS, true) || $valuecolumns === []) {
+        $map = array_fill_keys($userids, false);
+        if ($map === []) {
             return $map;
         }
 
-        [$selectids, $params] = $DB->get_in_or_equal($ids, SQL_PARAMS_NAMED, 'id');
-        $params['quizid'] = $quizid;
-
-        // Join conditions on value columns, e.g. "timeopen IS NOT NULL OR timeclose IS NOT NULL ...".
-        $selectnotnull = implode(' OR ', array_map(
-            static fn(string $col): string => "$col IS NOT NULL",
-            $valuecolumns
-        ));
-
-        $records = $DB->get_records_select(
-            'quiz_overrides',
-            "quiz = :quizid AND $idcolumn $selectids AND ($selectnotnull)",
-            $params,
-            '', // No ordering fields.
-            "id, $idcolumn AS overrideid, " . implode(', ', $valuecolumns)
-        );
-
-        // Adjust override map for each override record.
-        foreach ($records as $record) {
-            $flags = (object)[
-                'hasoverride' => true,
-                'hastimeoverride' => false,
-            ];
-            foreach (self::TIME_COLUMNS as $column) {
-                if (!empty($record->$column)) {
-                    $flags->hastimeoverride = true;
-                    break;
+        // Split this quiz's overrides into user overrides (for displayed students only) and group overrides.
+        $useroverrides = [];
+        $groupoverrides = [];
+        foreach ($DB->get_records('quiz_overrides', ['quiz' => $quizid]) as $override) {
+            if (!empty($override->userid)) {
+                $userid = (int) $override->userid;
+                if (array_key_exists($userid, $map)) {
+                    $useroverrides[$userid] = $override;
                 }
+            } else if (!empty($override->groupid)) {
+                $groupoverrides[(int) $override->groupid] = $override;
             }
-            $map[(int) $record->overrideid] = $flags;
+        }
+
+        $usergroups = self::get_override_group_memberships(array_keys($groupoverrides), $userids);
+
+        foreach (array_keys($map) as $userid) {
+            $usercolumns = isset($useroverrides[$userid]) ? self::get_overridden_columns($useroverrides[$userid]) : [];
+
+            // Collect the settings overridden by any of the student's groups ...
+            $groupcolumns = [];
+            foreach ($usergroups[$userid] ?? [] as $groupid) {
+                $groupcolumns = array_merge($groupcolumns, self::get_overridden_columns($groupoverrides[$groupid]));
+            }
+            // ... except those already set by the user override, which takes precedence.
+            $groupcolumns = array_values(array_diff(array_unique($groupcolumns), $usercolumns));
+
+            if ($usercolumns === [] && $groupcolumns === []) {
+                continue;
+            }
+
+            $effectivecolumns = array_merge($usercolumns, $groupcolumns);
+            $map[$userid] = (object) [
+                'hasuseroverride' => $usercolumns !== [],
+                'hasgroupoverride' => $groupcolumns !== [],
+                'hastimeoverride' => array_intersect(self::TIME_COLUMNS, $effectivecolumns) !== [],
+                'hasusertimeoverride' => array_intersect(self::TIME_COLUMNS, $usercolumns) !== [],
+                'hasgrouptimeoverride' => array_intersect(self::TIME_COLUMNS, $groupcolumns) !== [],
+            ];
         }
 
         return $map;
     }
 
     /**
-     * Load has-user-override flags for a set of students in one quiz.
+     * Get the settings that an override record actually overrides.
      *
-     * @param int $quizid Quiz instance id.
-     * @param int[] $userids Student user ids.
-     * @return array<int, bool|stdClass> Map userid => object containing boolean override flags.
+     * Core stores null for any setting the override leaves unchanged. Other values,
+     * including 0 (e.g. "no time limit" or "no close date"), are genuine overrides.
+     *
+     * @param \stdClass $override A {quiz_overrides} record.
+     * @return string[] Names of the overridden columns.
      */
-    public static function get_user_override_map(int $quizid, array $userids): array {
-        return self::get_override_map($quizid, 'userid', $userids);
+    protected static function get_overridden_columns(\stdClass $override): array {
+        return array_values(array_filter(
+            self::VALUE_COLUMNS,
+            static fn(string $column): bool => $override->$column !== null
+        ));
     }
 
     /**
-     * Load has-group-override flags for a set of groups in one quiz.
+     * Get the override groups that each of the given users belongs to.
      *
-     * @param int $quizid Quiz instance id.
-     * @param int[] $groupids Group ids.
-     * @return array<int, bool|stdClass> Map groupid => object containing boolean override flags.
+     * @param int[] $groupids Ids of groups that have an override for this quiz.
+     * @param int[] $userids User ids to check.
+     * @return array<int, int[]> Map userid => list of groupids.
      */
-    public static function get_group_override_map(int $quizid, array $groupids): array {
-        return self::get_override_map($quizid, 'groupid', $groupids);
+    protected static function get_override_group_memberships(array $groupids, array $userids): array {
+        global $DB;
+
+        if ($groupids === [] || $userids === []) {
+            return [];
+        }
+
+        [$groupsql, $groupparams] = $DB->get_in_or_equal($groupids, SQL_PARAMS_NAMED, 'groupid');
+        [$usersql, $userparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'userid');
+
+        $memberships = [];
+        $rs = $DB->get_recordset_select(
+            'groups_members',
+            "groupid $groupsql AND userid $usersql",
+            $groupparams + $userparams,
+            '',
+            'id, groupid, userid'
+        );
+        foreach ($rs as $row) {
+            $memberships[(int) $row->userid][] = (int) $row->groupid;
+        }
+        $rs->close();
+
+        return $memberships;
     }
 }

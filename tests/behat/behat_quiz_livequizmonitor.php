@@ -366,4 +366,24 @@ class behat_quiz_livequizmonitor extends behat_base {
             'attempts' => 5,
         ]);
     }
+
+    /**
+     * Create a group override with an extended time limit.
+     *
+     * @Given /^group "(?P<groupname>[^"]*)" has a time limit override on quiz "(?P<quizname>[^"]*)"$/
+     * @param string $groupname Group name (idnumber).
+     * @param string $quizname Quiz activity name.
+     */
+    public function group_has_a_time_limit_override_on_quiz(string $groupname, string $quizname): void {
+        global $DB;
+
+        $group = $DB->get_record('groups', ['name' => $groupname], 'id', MUST_EXIST);
+        $quiz = $DB->get_record('quiz', ['name' => $quizname], 'id', MUST_EXIST);
+
+        $DB->insert_record('quiz_overrides', (object) [
+            'quiz' => $quiz->id,
+            'groupid' => $group->id,
+            'timelimit' => 3600,
+        ]);
+    }
 }

@@ -56,7 +56,7 @@ Feature: Filter by user override in live quiz monitor
 
     When I click on "With user override (1)" "button"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
-    And I click on "Clear filters" "button"
+    And I click on "Reset all filters" "button"
 
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
     And "With user override (1)" "button" should exist
