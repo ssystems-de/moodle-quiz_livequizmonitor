@@ -58,8 +58,8 @@ Feature: Idle students in live quiz monitor
     And I should see "1" in the "[data-summary='idle']" "css_element"
 
     # Check filter buttons.
-    And "In progress (1)" "button" should exist
-    And "Idle (1)" "button" should exist
+    And the live monitor "status" filter should show "1" for "In progress"
+    And the live monitor "status" filter should show "1" for "Idle"
 
     # Check Status in student rows.
     And I should see "In progress" in the "Student ONE" "table_row"
@@ -88,8 +88,8 @@ Feature: Idle students in live quiz monitor
     Then I should see "Idle" in the "Student ONE" "table_row"
     And I should see "1" in the "[data-summary='idle']" "css_element"
     And I should see "0" in the "[data-summary='inprogress']" "css_element"
-    And "Idle (1)" "button" should exist
-    And "In progress (0)" "button" should exist
+    And the live monitor "status" filter should show "1" for "Idle"
+    And the live monitor "status" filter should show "0" for "In progress"
 
     # Ensure the Action items are still active and not disabled.
     When I click on "Actions" "button" in the "Student ONE" "table_row"
