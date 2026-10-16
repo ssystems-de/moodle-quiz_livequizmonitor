@@ -73,8 +73,9 @@ class MonitorComponent extends BaseComponent {
             PROGRESSLABEL: '[data-field="progress"] .livequizmonitor-progress-label',
             TIMER: '[data-field="timer"]',
             SEARCHINPUT: '[data-action="search"]',
-            FILTERCHIP: '.livequizmonitor-filter-toolbar [data-action="filter-status"]',
-            FILTERFLAG: '.livequizmonitor-filter-toolbar [data-action="filter-flag"]',
+            FILTERCHIP: '.livequizmonitor-filter-toolbar [data-filter-option="status"]',
+            FILTERFLAG: '.livequizmonitor-filter-toolbar [data-filter-option="overrides"]',
+            FILTERCOUNT: '.livequizmonitor-filter-toolbar [data-filter-count]',
             CLEARFILTERS: '[data-action="clear-filters"]',
             FILTEREMPTY: '[data-region="filter-empty"]',
             STUDENTTABLE: '[data-region="student-table"]',
@@ -507,7 +508,7 @@ class MonitorComponent extends BaseComponent {
         }
 
         this.addEventListener(this.element, 'click', this.handleFilterClick);
-        this.addEventListener(this.element, 'click', this.handleFlagFilterClick);
+        this.addEventListener(this.element, 'change', this.handleFilterOptionChange);
 
         const clearBtn = this.getElement(this.selectors.CLEARFILTERS);
         if (clearBtn) {
@@ -535,7 +536,7 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
-     * Delegate clicks on status chips and summary tiles.
+     * Delegate clicks on summary tiles.
      *
      * @param {Event} event
      */
@@ -554,21 +555,23 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
-     * Delegate clicks on boolean flag toggle buttons (e.g. "Has extension").
+     * Apply a newly selected option of the status or overrides radio group.
+     *
+     * Radios only fire "change" when they become selected, so selecting the
+     * current option again is a no-op; "All" is how a filter is cleared.
      *
      * @param {Event} event
      */
-    handleFlagFilterClick(event) {
-        const trigger = event.target.closest('[data-action="filter-flag"]');
-        if (!trigger || !this.element.contains(trigger)) {
+    handleFilterOptionChange(event) {
+        const option = event.target.closest('[data-filter-option]');
+        if (!option || !option.checked || !this.element.contains(option)) {
             return;
         }
-        const flag = trigger.dataset.flag;
-        if (!flag) {
-            return;
+        if (option.dataset.filterOption === 'status') {
+            this.reactive.dispatch('setStatusFilter', option.value);
+        } else {
+            this.reactive.dispatch('setFlagFilter', option.value);
         }
-        event.preventDefault();
-        this.reactive.dispatch('setFlagFilter', flag);
         this.afterFilterChange();
     }
 
@@ -1160,16 +1163,7 @@ class MonitorComponent extends BaseComponent {
         };
 
         this.element.querySelectorAll(this.selectors.FILTERCHIP).forEach((chip) => {
-            const status = chip.dataset.status;
-            const isActive = status === activeStatus;
-            chip.classList.remove('active', 'livequizmonitor-filter-chip', 'btn-sm');
-            chip.classList.toggle('btn-primary', isActive);
-            chip.classList.toggle('btn-outline-secondary', !isActive);
-            chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            const countEl = chip.querySelector(`[data-filter-count="${status}"]`);
-            if (countEl && status in counts) {
-                countEl.textContent = counts[status];
-            }
+            chip.checked = chip.value === activeStatus;
         });
 
         const flagcounts = {
@@ -1179,18 +1173,19 @@ class MonitorComponent extends BaseComponent {
             alloverride: state.meta?.totalstudents ?? 0,
         };
         this.element.querySelectorAll(this.selectors.FILTERFLAG).forEach((flagbtn) => {
-            const flag = flagbtn.dataset.flag;
-            const isActive = ALL_FLAGS[flag]
+            const flag = flagbtn.value;
+            flagbtn.checked = ALL_FLAGS[flag]
                 ? !ALL_FLAGS[flag].some((groupFlag) => state.meta?.filters?.[groupFlag])
                 : !!state.meta?.filters?.[flag];
-            flagbtn.classList.toggle('btn-primary', isActive);
-            flagbtn.classList.toggle('btn-outline-secondary', !isActive);
-            flagbtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            if (flag in flagcounts) {
-                const countEl = flagbtn.querySelector(`[data-filter-count="${flag}"]`);
-                if (countEl) {
-                    countEl.textContent = flagcounts[flag];
-                }
+        });
+
+        // Status and override keys never overlap ("all" vs "alloverride"), so one lookup serves both.
+        const allcounts = {...counts, ...flagcounts};
+        this.element.querySelectorAll(this.selectors.FILTERCOUNT).forEach((badge) => {
+            const key = badge.dataset.filterCount;
+            if (key in allcounts) {
+                badge.textContent = allcounts[key];
+                badge.classList.toggle('livequizmonitor-count-badge-zero', !allcounts[key]);
             }
         });
 
