@@ -41,8 +41,8 @@ use stdClass;
  * Applies relative time extensions through core quiz user overrides.
  */
 class extend_time_manager {
-    /** @var int[] Allowed extension durations in minutes. */
-    public const ALLOWED_MINUTES = [5, 10, 15, 30];
+    /** @var int Upper bound for a custom extension, in minutes. Passed to the modal via the monitor page. */
+    public const MAX_CUSTOM_MINUTES = 180;
 
     /** @var string Individual extend scope. */
     public const SCOPE_INDIVIDUAL = 'individual';
@@ -100,7 +100,9 @@ class extend_time_manager {
             );
         }
 
-        if (!in_array($minutes, self::ALLOWED_MINUTES, true)) {
+        // A preset is just a convenient value within this same range, not a separate
+        // category: any whole number of minutes from 1 up to MAX_CUSTOM_MINUTES is valid.
+        if ($minutes <= 0 || $minutes > self::MAX_CUSTOM_MINUTES) {
             throw new moodle_exception('invalidminutes', 'quiz_livequizmonitor');
         }
 

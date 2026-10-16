@@ -588,6 +588,101 @@ final class monitor_manager_test extends advanced_testcase {
         $this->assertTrue($blockedrow->unblockactionenabled);
     }
 
+    public function test_get_allowed_students_unrestricted_quiz_returns_all_enrolled(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $quiz = $generator->create_module('quiz', ['course' => $course->id]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id);
+        $context = \context_module::instance($cm->id);
+
+        $student1 = $generator->create_and_enrol($course, 'student');
+        $student2 = $generator->create_and_enrol($course, 'student');
+
+        $students = monitor_manager::get_allowed_students($cm, $context, 0);
+
+        $this->assertCount(2, $students);
+        $this->assertArrayHasKey($student1->id, $students);
+        $this->assertArrayHasKey($student2->id, $students);
+    }
+
+    public function test_get_allowed_students_respects_group_restriction(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $quiz = $generator->create_module('quiz', ['course' => $course->id]);
+
+        $student1 = $generator->create_and_enrol($course, 'student');
+        $student2 = $generator->create_and_enrol($course, 'student');
+
+        // Put only student1 in the restricted group.
+        $group = $generator->create_group(['courseid' => $course->id]);
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $student1->id]);
+
+        // Restrict the quiz to members of that group.
+        $availability = json_encode((object) [
+            'op' => '&',
+            'c' => [
+                (object) [
+                    'type' => 'group',
+                    'id' => (int) $group->id,
+                ],
+            ],
+            'showc' => [false],
+        ]);
+        $DB->set_field('course_modules', 'availability', $availability, ['id' => $quiz->cmid]);
+        rebuild_course_cache($course->id, true);
+
+        $modinfo = get_fast_modinfo($course);
+        $cm = $modinfo->get_cm($quiz->cmid);
+        $context = \context_module::instance($cm->id);
+
+        $students = monitor_manager::get_allowed_students($cm, $context, 0);
+
+        $this->assertCount(1, $students);
+        $this->assertArrayHasKey($student1->id, $students);
+        $this->assertArrayNotHasKey($student2->id, $students);
+    }
+
+    public function test_get_allowed_students_includes_suspended_enrolments(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $quiz = $generator->create_module('quiz', ['course' => $course->id]);
+
+        $activestudent = $generator->create_and_enrol($course, 'student');
+
+        // Enrol a second student but with a suspended enrolment status.
+        $suspendedstudent = $generator->create_user();
+        $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student']);
+        $generator->enrol_user(
+            $suspendedstudent->id,
+            $course->id,
+            $studentrole,
+            'manual',
+            0,
+            0,
+            ENROL_USER_SUSPENDED
+        );
+
+        $modinfo = get_fast_modinfo($course);
+        $cm = $modinfo->get_cm($quiz->cmid);
+        $context = \context_module::instance($cm->id);
+
+        $students = monitor_manager::get_allowed_students($cm, $context, 0);
+
+        $this->assertArrayHasKey($activestudent->id, $students);
+        $this->assertArrayHasKey(
+            $suspendedstudent->id,
+            $students,
+            'Suspended enrolments must still be visible to the invigilator (see PR #3 review).'
+        );
+    }
+
     /**
      * A fresh in-progress attempt is not idle.
      */
@@ -730,6 +825,7 @@ final class monitor_manager_test extends advanced_testcase {
         $this->setUser($extended);
         $studentview = monitor_manager::get_state($course, $cm, $quiz, 0);
         $this->assertFalse($studentview->canviewoverrides);
+        $this->assertSame(0, $studentview->nooverridecount);
         $this->assertSame(0, $studentview->useroverridecount);
         foreach ($studentview->students as $row) {
             $this->assertFalse($row->hasuseroverride);
@@ -739,6 +835,7 @@ final class monitor_manager_test extends advanced_testcase {
         $this->setAdminUser();
         $state = monitor_manager::get_state($course, $cm, $quiz, 0);
         $this->assertTrue($state->canviewoverrides);
+        $this->assertSame(1, $state->nooverridecount);
         $this->assertSame(1, $state->useroverridecount);
 
         $byuserid = [];
@@ -826,6 +923,7 @@ final class monitor_manager_test extends advanced_testcase {
         $this->setAdminUser();
         $state = monitor_manager::get_state($course, $cm, $quiz, 0);
 
+        $this->assertSame(1, $state->nooverridecount);
         $this->assertSame(1, $state->groupoverridecount);
 
         $byuserid = [];
@@ -881,6 +979,7 @@ final class monitor_manager_test extends advanced_testcase {
         $this->setAdminUser();
         $state = monitor_manager::get_state($course, $cm, $quiz, 0);
 
+        $this->assertSame(0, $state->nooverridecount);
         $this->assertSame(0, $state->groupoverridecount);
 
         $row = $state->students[0];

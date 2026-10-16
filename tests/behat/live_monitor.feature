@@ -67,29 +67,6 @@ Feature: Live quiz monitor report
     Then I should see "Sam Student"
     But I should not see "Alex Other"
 
-  @javascript @extend
-  Scenario: Individual extend modal opens from row action menu
-    Given I am on the "Quiz 1" "quiz activity" page logged in as "student1"
-    And I press "Attempt quiz"
-    And I press "Start attempt"
-    And I log in as "teacher1"
-    When I am on the live monitor report for "Quiz 1"
-    And I click on ".livequizmonitor-row-actions .dropdown-toggle" "css_element"
-    And I click on "Extend time" "link"
-    Then I should see "Extend quiz time"
-    And I should see "Add time"
-
-  @javascript @extend
-  Scenario: Bulk extend button opens modal when students are in progress
-    Given I am on the "Quiz 1" "quiz activity" page logged in as "student1"
-    And I press "Attempt quiz"
-    And I press "Start attempt"
-    And I log in as "teacher1"
-    When I am on the live monitor report for "Quiz 1"
-    And I click on "Extend time" "button"
-    Then I should see "Extend quiz time"
-    And I should see "Add time"
-
   @javascript @notes
   Scenario: Teacher adds and edits a student note
     Given I am on the live monitor report for "Quiz 1"

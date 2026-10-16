@@ -31,8 +31,18 @@ import {Reactive} from 'core/reactive';
  * @type {string[][]}
  */
 const MUTUALLY_EXCLUSIVE_FLAG_GROUPS = [
-    ['useroverride', 'groupoverride'],
+    ['nooverride', 'useroverride', 'groupoverride'],
 ];
+
+/**
+ * Pseudo flags that select "all" for a MUTUALLY_EXCLUSIVE_FLAG_GROUPS entry. They are not
+ * stored in meta.filters: such a flag is active whenever no flag of its group is set.
+ *
+ * @type {Object<string, string[]>}
+ */
+export const ALL_FLAGS = {
+    alloverride: MUTUALLY_EXCLUSIVE_FLAG_GROUPS[0],
+};
 
 /**
  * Empty summary bucket defaults.
@@ -87,6 +97,7 @@ export const createInitialState = () => ({
         filters: {
             search: '',
             status: 'all',
+            nooverride: false,
             useroverride: false,
             groupoverride: false,
         },
@@ -98,6 +109,7 @@ export const createInitialState = () => ({
         onesessionactive: false,
         canunblock: false,
         canviewoverrides: false,
+        nooverridecount: 0,
         useroverridecount: 0,
         groupoverridecount: 0,
         canviewattempts: false,
@@ -163,6 +175,9 @@ class MonitorMutations {
         }
         if (payload.canviewoverrides !== undefined) {
             stateManager.state.meta.canviewoverrides = payload.canviewoverrides;
+        }
+        if (payload.nooverridecount !== undefined) {
+            stateManager.state.meta.nooverridecount = payload.nooverridecount;
         }
         if (payload.useroverridecount !== undefined) {
             stateManager.state.meta.useroverridecount = payload.useroverridecount;
@@ -255,12 +270,20 @@ class MonitorMutations {
      *
      * Flags in the same MUTUALLY_EXCLUSIVE_FLAG_GROUPS entry behave like a
      * single-select amongst themselves: activating one deactivates the
-     * others in its group.
+     * others in its group. An ALL_FLAGS pseudo flag clears its whole group.
      *
      * @param {StateManager} stateManager
-     * @param {string} flag Flag key in meta.filters (e.g. "useroverride")
+     * @param {string} flag Flag key in meta.filters (e.g. "useroverride") or in ALL_FLAGS
      */
     setFlagFilter(stateManager, flag) {
+        if (Object.prototype.hasOwnProperty.call(ALL_FLAGS, flag)) {
+            stateManager.setReadOnly(false);
+            ALL_FLAGS[flag].forEach((groupFlag) => {
+                stateManager.state.meta.filters[groupFlag] = false;
+            });
+            stateManager.setReadOnly(true);
+            return;
+        }
         if (!Object.prototype.hasOwnProperty.call(stateManager.state.meta.filters, flag)) {
             return;
         }
@@ -292,6 +315,7 @@ class MonitorMutations {
         stateManager.setReadOnly(false);
         stateManager.state.meta.filters.search = '';
         stateManager.state.meta.filters.status = 'all';
+        stateManager.state.meta.filters.nooverride = false;
         stateManager.state.meta.filters.useroverride = false;
         stateManager.state.meta.filters.groupoverride = false;
         stateManager.setReadOnly(true);
@@ -306,6 +330,24 @@ class MonitorMutations {
     setStale(stateManager, stale = true) {
         stateManager.setReadOnly(false);
         stateManager.state.meta.stale = stale;
+        stateManager.setReadOnly(true);
+    }
+
+    /**
+     * Set a student's note flag after their note is saved.
+     *
+     * @param {StateManager} stateManager
+     * @param {object} payload
+     * @param {number} payload.userid Student user id
+     * @param {boolean} payload.hasnote Whether the student now has a note
+     */
+    setStudentNote(stateManager, {userid, hasnote}) {
+        const student = stateManager.state.students.get(userid);
+        if (!student) {
+            return;
+        }
+        stateManager.setReadOnly(false);
+        student.hasnote = hasnote;
         stateManager.setReadOnly(true);
     }
 

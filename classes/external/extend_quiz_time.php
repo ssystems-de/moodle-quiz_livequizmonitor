@@ -85,9 +85,9 @@ class extend_quiz_time extends external_api {
             throw new invalid_parameter_exception('Invalid scope');
         }
 
-        if (!in_array((int) $params['minutes'], extend_time_manager::ALLOWED_MINUTES, true)) {
-            throw new invalid_parameter_exception('Invalid minutes');
-        }
+        // Minutes range is validated once, in extend_time_manager::extend_quiz_time(), so it
+        // is not duplicated here. A structurally invalid value (e.g. 0 or negative) still
+        // surfaces to the caller, just as a moodle_exception rather than an API-parameter one.
 
         if ($params['scope'] === extend_time_manager::SCOPE_INDIVIDUAL && (int) $params['userid'] <= 0) {
             throw new invalid_parameter_exception('Missing userid for individual scope');

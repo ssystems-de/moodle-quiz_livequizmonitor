@@ -30,7 +30,6 @@ require_once(__DIR__ . '/../traits/group_scope_test_trait.php');
 require_once(__DIR__ . '/../traits/quiz_attempt_activity_trait.php');
 
 use advanced_testcase;
-use invalid_parameter_exception;
 use moodle_exception;
 use quiz_livequizmonitor\local\manager\extend_time_manager;
 use quiz_livequizmonitor\tests\traits\group_scope_test_trait;
@@ -121,9 +120,10 @@ final class extend_quiz_time_test extends advanced_testcase {
     }
 
     /**
-     * Invalid minutes are rejected.
+     * A custom minutes value that is not one of the quick-fill presets is still valid,
+     * as long as it falls within extend_time_manager::MAX_CUSTOM_MINUTES.
      */
-    public function test_execute_rejects_invalid_minutes(): void {
+    public function test_execute_accepts_custom_minutes_outside_presets(): void {
         $this->resetAfterTest();
 
         $generator = $this->getDataGenerator();
@@ -134,8 +134,36 @@ final class extend_quiz_time_test extends advanced_testcase {
 
         $this->setUser($teacher);
 
-        $this->expectException(invalid_parameter_exception::class);
-        extend_quiz_time::execute($cm->id, 0, 7, extend_time_manager::SCOPE_BULK, 0);
+        $result = extend_quiz_time::execute($cm->id, 0, 7, extend_time_manager::SCOPE_BULK, 0);
+
+        $this->assertSame(7, $result['minutes']);
+    }
+
+    /**
+     * Minutes outside [1, MAX_CUSTOM_MINUTES] are rejected. This is validated once,
+     * in extend_time_manager::extend_quiz_time(), so it surfaces here as a
+     * moodle_exception rather than an invalid_parameter_exception.
+     */
+    public function test_execute_rejects_out_of_range_minutes(): void {
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $teacher = $generator->create_user();
+        $generator->enrol_user($teacher->id, $course->id, 'editingteacher');
+
+        [$quiz, $cm] = $this->create_timed_quiz($course);
+
+        $this->setUser($teacher);
+
+        $this->expectException(moodle_exception::class);
+        extend_quiz_time::execute(
+            $cm->id,
+            0,
+            extend_time_manager::MAX_CUSTOM_MINUTES + 1,
+            extend_time_manager::SCOPE_BULK,
+            0
+        );
     }
 
     /**

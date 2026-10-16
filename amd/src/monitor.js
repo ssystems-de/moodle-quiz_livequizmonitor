@@ -31,7 +31,7 @@ import {
     applyColumnVisibility,
     saveHiddenColumns,
 } from 'quiz_livequizmonitor/column_visibility';
-import {createMonitorReactive, formatDuration} from 'quiz_livequizmonitor/reactive/monitor_state';
+import {ALL_FLAGS, createMonitorReactive, formatDuration} from 'quiz_livequizmonitor/reactive/monitor_state';
 import {showPasswordModal} from 'quiz_livequizmonitor/show_password_modal';
 import {showExtendModal} from 'quiz_livequizmonitor/extend_time_modal';
 import {showStudentNoteModal} from 'quiz_livequizmonitor/student_note_modal';
@@ -94,6 +94,8 @@ class MonitorComponent extends BaseComponent {
         this.pollTimer = null;
         this.tickTimer = null;
         this.pollInFlight = false;
+        this.pollQueued = false;
+        this.localgeneration = 0;
         this.syncInFlight = false;
         this.syncQueued = false;
         this.hasReceivedPoll = false;
@@ -113,6 +115,7 @@ class MonitorComponent extends BaseComponent {
         this.showActionsColumn = root.dataset.showActions === '1';
         this.lastUpdatedPrefix = root.dataset.lastupdatedPrefix ?? '';
         this.canextend = root.dataset.canextend === '1';
+        this.extendMaxMinutes = parseInt(root.dataset.extendMaxMinutes ?? 0, 10);
         this.onesessionactive = root.dataset.onesessionActive === '1';
         this.canunblock = root.dataset.canunblock === '1';
     }
@@ -139,6 +142,7 @@ class MonitorComponent extends BaseComponent {
         this.userOverrideFlagLabel = root.dataset.useroverrideFlagLabel ?? 'Has extension';
         this.userTimeOverrideFlagLabel = root.dataset.usertimeoverrideFlagLabel ?? 'Time-related override';
         this.groupOverrideFlagLabel = root.dataset.groupoverrideFlagLabel ?? 'With group override';
+        this.noteFlagLabel = root.dataset.noteFlagLabel ?? 'This student has a note';
     }
 
     /**
@@ -194,6 +198,7 @@ class MonitorComponent extends BaseComponent {
             {watch: 'meta.totalstudents:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.sortcolumn:updated', handler: this.renderSortIndicators},
             {watch: 'meta.sortdirection:updated', handler: this.renderSortIndicators},
+            {watch: 'meta.nooverridecount:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.useroverridecount:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.groupoverridecount:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.canviewoverrides:updated', handler: this.renderFilterToolbar},
@@ -350,15 +355,14 @@ class MonitorComponent extends BaseComponent {
             return;
         }
 
-        const row = this.element.querySelector(`tr[data-userid="${userid}"]`);
-        if (row) {
-            const link = row.querySelector('[data-action="edit-note"]');
-            if (link) {
-                this.updateNoteActionLink(link, {hasnote: response.hasnote});
-            }
-        }
+        // Invalidate any poll already in flight, so its older data can't undo this change.
+        this.localgeneration += 1;
 
-        this.poll();
+        // Update the reactive state; the students.hasnote:updated watcher re-renders the flag and label.
+        this.reactive.dispatch('setStudentNote', {userid, hasnote: !!response.hasnote});
+
+        // Fetch fresh data once any in-flight poll has finished.
+        this.poll({force: true});
     }
 
     /**
@@ -379,6 +383,7 @@ class MonitorComponent extends BaseComponent {
             mode: 'bulk',
             cmid: this.cmid,
             groupid: this.groupid,
+            maxminutes: this.extendMaxMinutes,
             inprogresscount: this.getInProgressCount(true),
         });
         if (response) {
@@ -420,6 +425,7 @@ class MonitorComponent extends BaseComponent {
             mode: 'individual',
             cmid: this.cmid,
             groupid: this.groupid,
+            maxminutes: this.extendMaxMinutes,
             userid: parseInt(trigger.dataset.userid, 10),
             studentname: trigger.dataset.studentname ?? '',
             attemptendat: parseInt(trigger.dataset.attemptendat, 10) || null,
@@ -670,16 +676,24 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
-     * Poll server for fresh monitor state.
+     * Fetch the latest monitor state from the server and apply it.
      *
-     * @returns {Promise<void>}
+     * @param {object} [options]
+     * @param {boolean} [options.force=false] True for polls triggered by a user action (e.g. a note save).
+     *     If a poll is already in flight, a forced poll is queued to run afterwards; a timer tick is dropped.
      */
-    async poll() {
+    async poll({force = false} = {}) {
         if (this.pollInFlight) {
+            // Only user actions need a fetch that starts after their change;
+            // timer ticks are dropped, so a slow server isn't hit with back-to-back polls.
+            if (force) {
+                this.pollQueued = true;
+            }
             return;
         }
 
         this.pollInFlight = true;
+        const generation = this.localgeneration;
         try {
             const state = this.getState();
 
@@ -692,6 +706,12 @@ class MonitorComponent extends BaseComponent {
                     sortdirection: state.meta.sortdirection,
                 },
             }])[0];
+
+            // Discard a response requested before a local change, as it would undo that change.
+            // The finally block still runs, so any queued forced poll fetches fresh data straight away.
+            if (generation !== this.localgeneration) {
+                return;
+            }
 
             if (response.onesessionactive !== undefined) {
                 this.onesessionactive = !!response.onesessionactive;
@@ -710,6 +730,10 @@ class MonitorComponent extends BaseComponent {
             this.reactive.dispatch('setStale', true);
         } finally {
             this.pollInFlight = false;
+            if (this.pollQueued) {
+                this.pollQueued = false;
+                await this.poll();
+            }
         }
     }
 
@@ -905,6 +929,7 @@ class MonitorComponent extends BaseComponent {
             hasusertimeoverride: !!student.hasusertimeoverride,
             hastimeoverride: !!student.hastimeoverride,
             usertimeoverrideflaglabel: this.userTimeOverrideFlagLabel,
+            noteflaglabel: this.noteFlagLabel,
             attemptendat: student.attemptendat ?? '',
             attemptid: student.attemptid ?? '',
             notelabel: student.hasnote ? this.noteEditLabel : this.noteAddLabel,
@@ -1096,6 +1121,7 @@ class MonitorComponent extends BaseComponent {
         }
         this.updateOverrideFlag(row, student);
         this.updateTimeOverrideFlag(row, student);
+        this.updateNoteFlag(row, student);
         this.renderRowActions(student, row);
     }
 
@@ -1147,12 +1173,16 @@ class MonitorComponent extends BaseComponent {
         });
 
         const flagcounts = {
+            nooverride: state.meta?.nooverridecount ?? 0,
             useroverride: state.meta?.useroverridecount ?? 0,
             groupoverride: state.meta?.groupoverridecount ?? 0,
+            alloverride: state.meta?.totalstudents ?? 0,
         };
         this.element.querySelectorAll(this.selectors.FILTERFLAG).forEach((flagbtn) => {
             const flag = flagbtn.dataset.flag;
-            const isActive = !!state.meta?.filters?.[flag];
+            const isActive = ALL_FLAGS[flag]
+                ? !ALL_FLAGS[flag].some((groupFlag) => state.meta?.filters?.[groupFlag])
+                : !!state.meta?.filters?.[flag];
             flagbtn.classList.toggle('btn-primary', isActive);
             flagbtn.classList.toggle('btn-outline-secondary', !isActive);
             flagbtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -1472,6 +1502,42 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
+     * Show or hide the note flag beside the student's name.
+     *
+     * Mirrors updateBlockedFlag(): the name cell is never rebuilt wholesale on
+     * poll (see updateStudentRow()), so this icon needs its own live patch or
+     * it would go stale for a row that already exists in the DOM when a note
+     * is added or removed mid-session.
+     *
+     * @param {HTMLElement} row Table row element
+     * @param {object} student Student state row
+     */
+    updateNoteFlag(row, student) {
+        const nameEl = row.querySelector('[data-field="fullname"] .livequizmonitor-student-name');
+        if (!nameEl) {
+            return;
+        }
+
+        let flag = nameEl.querySelector('.livequizmonitor-note-flag');
+        if (student.hasnote) {
+            if (!flag) {
+                const flagTitle = this.escapeHtml(this.noteFlagLabel);
+                const html = '<i class="fa-solid fa-book livequizmonitor-note-flag" ' +
+                    `title="${flagTitle}" aria-label="${flagTitle}"></i>`;
+                // Keep the note flag ahead of any override badges, to match student_row.mustache.
+                const overrideFlag = nameEl.querySelector('.livequizmonitor-override-flag');
+                if (overrideFlag) {
+                    overrideFlag.insertAdjacentHTML('beforebegin', html);
+                } else {
+                    nameEl.insertAdjacentHTML('beforeend', html);
+                }
+            }
+        } else if (flag) {
+            flag.remove();
+        }
+    }
+
+    /**
      * Show or hide the blocked flag beside the row action menu.
      *
      * @param {HTMLElement} row Table row element
@@ -1511,7 +1577,8 @@ class MonitorComponent extends BaseComponent {
      * @param {object} student Student state row
      */
     updateOverrideFlag(row, student) {
-        const nameCell = row.querySelector('[data-field="fullname"]');
+        // The badges sit inside the name wrapper, next to the note flag (see student_row.mustache).
+        const nameCell = row.querySelector('[data-field="fullname"] .livequizmonitor-student-name');
         if (!nameCell) {
             return;
         }

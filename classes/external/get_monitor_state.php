@@ -75,8 +75,7 @@ class get_monitor_state extends external_api {
             'sortdirection' => $sortdirection,
         ]);
 
-        $cm = get_coursemodule_from_id('quiz', $params['cmid'], 0, false, MUST_EXIST);
-        $course = get_course($cm->course);
+        [$course, $cm] = get_course_and_cm_from_cmid($params['cmid'], 'quiz');
         $quiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
         $context = context_module::instance($cm->id);
 
@@ -168,6 +167,7 @@ class get_monitor_state extends external_api {
             'canviewattempts' => new external_value(PARAM_BOOL, 'Viewer may view student attempts'),
             'canviewlogs' => new external_value(PARAM_BOOL, 'Viewer may view student logs'),
             'canviewoverrides' => new external_value(PARAM_BOOL, 'Viewer may see override information'),
+            'nooverridecount' => new external_value(PARAM_INT, 'Students with neither a user nor a (relevant) group override'),
             'useroverridecount' => new external_value(PARAM_INT, 'Students with a user override'),
             'groupoverridecount' => new external_value(PARAM_INT, 'Students with a (relevant) group override'),
             'summary' => new external_single_structure([
@@ -249,6 +249,7 @@ class get_monitor_state extends external_api {
             'canviewattempts' => (bool) ($state->canviewattempts ?? false),
             'canviewlogs' => (bool) ($state->canviewlogs ?? false),
             'canviewoverrides' => (bool) ($state->canviewoverrides ?? false),
+            'nooverridecount' => (int) ($state->nooverridecount ?? 0),
             'useroverridecount' => (int) ($state->useroverridecount ?? 0),
             'groupoverridecount' => (int) ($state->groupoverridecount ?? 0),
             'summary' => [

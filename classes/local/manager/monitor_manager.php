@@ -30,6 +30,8 @@ require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 
 use cm_info;
 use context_module;
+use core_availability\info_module;
+use core_user\fields;
 use mod_quiz\access_manager;
 use mod_quiz\quiz_attempt;
 use mod_quiz\quiz_settings;
@@ -133,6 +135,11 @@ class monitor_manager {
     ): stdClass {
         global $DB;
 
+        // Convert stdClass to cm_info early.
+        if ($cm instanceof stdClass) {
+            $cm = cm_info::create($cm);
+        }
+
         $context = context_module::instance($cm->id);
         $now = time();
 
@@ -146,8 +153,10 @@ class monitor_manager {
         if ($groupid === supervision_scope_manager::NO_GROUPS_ALLOWED) {
             $students = [];
         } else {
-            $students = get_enrolled_users($context, 'mod/quiz:attempt', $groupid, 'u.*', 'u.lastname ASC, u.firstname ASC');
+            // Get the student list, honouring the activity's access restrictions.
+            $students = self::get_allowed_students($cm, $context, $groupid);
         }
+
         $totalquestions = self::count_quiz_questions((int) $quiz->id);
         $showemail = has_capability('moodle/course:viewhiddenuserfields', $context);
 
@@ -205,6 +214,7 @@ class monitor_manager {
             $row->hasnote = !empty($hasnotemap[$row->userid]);
         }
 
+        $nooverridecount = 0;
         $useroverridecount = 0;
         $groupoverridecount = 0;
         $canviewoverrides = overrides_manager::user_can_view_overrides($context);
@@ -240,12 +250,18 @@ class monitor_manager {
                     $row->timeoverrideflaglabel = '';
                 }
 
-                // Update override counts, if necessary.
+                // Update override counts, as necessary.
+                $nooverride = true;
                 if ($row->hasuseroverride) {
                     $useroverridecount++;
+                    $nooverride = false;
                 }
                 if ($row->hasgroupoverride) {
                     $groupoverridecount++;
+                    $nooverride = false;
+                }
+                if ($nooverride) {
+                    $nooverridecount++;
                 }
             }
         }
@@ -292,11 +308,66 @@ class monitor_manager {
             'sortcolumn' => $sortcolumn,
             'sortdirection' => $sortdirection,
             'canviewoverrides' => $canviewoverrides,
+            'nooverridecount' => $nooverridecount,
             'useroverridecount' => $useroverridecount,
             'groupoverridecount' => $groupoverridecount,
         ];
 
         return $state;
+    }
+
+    /**
+     * Get the users who may attempt this quiz, honouring activity access restrictions.
+     *
+     * The availability filter is folded into the enrolment query via
+     * info_module::get_user_list_sql(), so the roster costs one query and is never stale.
+     *
+     * Suspended enrolments are deliberately included: an invigilator still needs to see
+     * a student whose enrolment changes while their attempt is in progress.
+     *
+     * @param cm_info|stdClass $cm Course module record.
+     * @param context_module $context Module context.
+     * @param int $groupid Active group id (0 = all groups).
+     * @param int $userid Optional single user to test, 0 for the whole roster.
+     * @return array User records keyed by user id.
+     */
+    public static function get_allowed_students(
+        cm_info|stdClass $cm,
+        context_module $context,
+        int $groupid,
+        int $userid = 0
+    ): array {
+        global $DB;
+
+        $onlyactive = false;
+
+        [$enrolledsql, $params] = get_enrolled_sql($context, 'mod/quiz:attempt', $groupid, $onlyactive);
+
+        $userfields = fields::for_name()->including('id', 'email', 'username', 'idnumber');
+        $fieldsql = $userfields->get_sql('u', false, '', '', false);
+        $sql = "SELECT {$fieldsql->selects}
+                FROM {user} u
+                JOIN ($enrolledsql) e ON e.id = u.id
+                WHERE u.deleted = 0";
+
+        // Narrow to a single user when the caller only needs a membership test.
+        if ($userid > 0) {
+            $sql .= ' AND u.id = :targetuserid';
+            $params['targetuserid'] = $userid;
+        }
+
+        // Fold the activity's access restrictions into the same query.
+        if ($cm instanceof stdClass) {
+            $cm = cm_info::create($cm);
+        }
+        $info = new info_module($cm);
+        [$usersql, $userparams] = $info->get_user_list_sql($onlyactive);
+        if ($usersql !== '') {
+            $sql .= " AND u.id IN ($usersql)";
+            $params = array_merge($params, $userparams);
+        }
+
+        return $DB->get_records_sql($sql, $params);
     }
 
     /**

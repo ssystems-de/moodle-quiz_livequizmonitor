@@ -37,16 +37,16 @@ Feature: Filter by user override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "With user override (1)" "button" should exist
+    Then "User (1)" "button" should exist
     And I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
 
-    When I click on "With user override (1)" "button"
+    When I click on "User (1)" "button"
     Then I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
 
     # Toggling the same button off restores the full list.
-    When I click on "With user override (1)" "button"
+    When I click on "User (1)" "button"
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
 
   @javascript
@@ -54,12 +54,12 @@ Feature: Filter by user override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "With user override (1)" "button"
+    When I click on "User (1)" "button"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I click on "Reset all filters" "button"
 
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
-    And "With user override (1)" "button" should exist
+    And "User (1)" "button" should exist
 
   @javascript
   Scenario: Teacher without manageoverrides or viewoverrides capability does not see the filter
@@ -70,7 +70,7 @@ Feature: Filter by user override in live quiz monitor
     And I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "With user override" "button" should not exist
+    Then "[data-filter-group='overrides']" "css_element" should not exist
 
   @javascript
   Scenario: Time-related override shows a badge on the timer, attempts-only override does not

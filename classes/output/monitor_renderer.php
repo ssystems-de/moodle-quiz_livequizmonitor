@@ -26,6 +26,7 @@ namespace quiz_livequizmonitor\output;
 
 use plugin_renderer_base;
 use quiz_livequizmonitor\local\column_helper;
+use quiz_livequizmonitor\local\manager\extend_time_manager;
 use quiz_livequizmonitor\local\manager\monitor_manager;
 use stdClass;
 
@@ -38,9 +39,10 @@ class monitor_renderer extends plugin_renderer_base {
      *
      * @param stdClass $state Monitor state from monitor_manager.
      * @param int $groupid Active group id.
+     * @param string $groupmenu HTML of the standard group menu ('' if the activity has no group mode).
      * @return array Template context.
      */
-    public function export_for_template(stdClass $state, int $groupid): array {
+    public function export_for_template(stdClass $state, int $groupid, string $groupmenu = ''): array {
         $updated = userdate($state->updatedat, get_string('strftimetime', 'langconfig'));
         $canextend = !empty($state->canextend);
         $inprogresscount = (int) ($state->inprogresscount ?? $state->summary->inprogress->count);
@@ -74,6 +76,7 @@ class monitor_renderer extends plugin_renderer_base {
             $student['useroverrideflaglabel'] = get_string('filter:useroverrideflag', 'quiz_livequizmonitor');
             $student['usertimeoverrideflaglabel'] = get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor');
             $student['groupoverrideflaglabel'] = get_string('filter:groupoverrideflag', 'quiz_livequizmonitor');
+            $student['noteflaglabel'] = get_string('notes:hasnoteflag', 'quiz_livequizmonitor');
             $students[] = $student;
         }
 
@@ -96,6 +99,7 @@ class monitor_renderer extends plugin_renderer_base {
             'summary' => (array) $state->summary,
             'students' => $students,
             'canextend' => $canextend,
+            'extendmaxminutes' => extend_time_manager::MAX_CUSTOM_MINUTES,
             'onesessionactive' => $onesessionactive,
             'canunblock' => $canunblock,
             'canviewattempts' => $canviewattempts,
@@ -115,6 +119,7 @@ class monitor_renderer extends plugin_renderer_base {
             'useroverrideflaglabel' => get_string('filter:useroverrideflag', 'quiz_livequizmonitor'),
             'usertimeoverrideflaglabel' => get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor'),
             'groupoverrideflaglabel' => get_string('filter:groupoverrideflag', 'quiz_livequizmonitor'),
+            'noteflaglabel' => get_string('notes:hasnoteflag', 'quiz_livequizmonitor'),
             'actionsmenulabel' => get_string('actions'),
             'tableheaders' => $tableheaders,
             'columns' => $this->export_columns($state, $tableheaders),
@@ -122,7 +127,7 @@ class monitor_renderer extends plugin_renderer_base {
             'showemailcolumn' => $showemailcolumn,
             'showactionscolumn' => true, // Always show Actions column.
             'actionscolumnlabel' => get_string('table:actions', 'quiz_livequizmonitor'),
-            'filter' => $this->export_filter_context($state),
+            'filter' => $this->export_filter_context($state, $groupmenu),
             'filterempty' => get_string('filter:empty', 'quiz_livequizmonitor'),
             'sortascending' => get_string('asc'),
             'sortdescending' => get_string('desc'),
@@ -216,9 +221,10 @@ class monitor_renderer extends plugin_renderer_base {
      * Build filter toolbar template context.
      *
      * @param stdClass $state Monitor state from monitor_manager.
+     * @param string $groupmenu HTML of the standard group menu ('' if the activity has no group mode).
      * @return array Template context for filter partial.
      */
-    protected function export_filter_context(stdClass $state): array {
+    protected function export_filter_context(stdClass $state, string $groupmenu = ''): array {
         $summary = $state->summary;
 
         return [
@@ -228,6 +234,7 @@ class monitor_renderer extends plugin_renderer_base {
             'namelabel' => get_string('filter:namelabel', 'quiz_livequizmonitor'),
             'searchplaceholder' => get_string('filter:searchplaceholder', 'quiz_livequizmonitor'),
             'statuslabel' => get_string('filter:statuslabel', 'quiz_livequizmonitor'),
+            'groupmenu' => $groupmenu,
             'chips' => [
                 [
                     'status' => 'all',
@@ -262,12 +269,19 @@ class monitor_renderer extends plugin_renderer_base {
             ],
             'canviewoverrides' => !empty($state->canviewoverrides),
             'overridesgrouplabel' => get_string('filter:overridesgrouplabel', 'quiz_livequizmonitor'),
+            'nooverridelabel' => get_string('filter:nooverride', 'quiz_livequizmonitor'),
+            'nooverridecount' => $state->nooverridecount ?? 0,
+            'nooverrideactive' => false,
             'useroverridelabel' => get_string('filter:useroverride', 'quiz_livequizmonitor'),
             'useroverridecount' => $state->useroverridecount ?? 0,
             'useroverrideactive' => false,
             'groupoverridelabel' => get_string('filter:groupoverride', 'quiz_livequizmonitor'),
             'groupoverridecount' => $state->groupoverridecount ?? 0,
             'groupoverrideactive' => false,
+            // No override filter is active by default, so "All" starts selected.
+            'alloverridelabel' => get_string('filter:all', 'quiz_livequizmonitor'),
+            'alloverridecount' => $state->totalstudents,
+            'alloverrideactive' => true,
         ];
     }
 }

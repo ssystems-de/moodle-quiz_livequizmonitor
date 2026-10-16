@@ -132,6 +132,86 @@ final class extend_time_manager_test extends advanced_testcase {
     }
 
     /**
+     * A custom minutes value outside the presets is accepted, as long as it is
+     * within [1, MAX_CUSTOM_MINUTES]. A preset is just a convenient value within
+     * this same range, not a separate category.
+     */
+    public function test_extend_accepts_custom_minutes_within_range(): void {
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $teacher = $generator->create_user();
+        $student = $generator->create_user();
+        $generator->enrol_user($teacher->id, $course->id, 'editingteacher');
+        $generator->enrol_user($student->id, $course->id, 'student');
+
+        [$quiz, $cm, $quizgenerator] = $this->create_timed_quiz($course);
+
+        $this->setUser($student);
+        $quizgenerator->create_attempt($quiz->id, $student->id);
+
+        $this->setUser($teacher);
+        $outcome = extend_time_manager::extend_quiz_time(
+            $course,
+            $cm,
+            $quiz,
+            0,
+            extend_time_manager::MAX_CUSTOM_MINUTES,
+            extend_time_manager::SCOPE_INDIVIDUAL,
+            $student->id
+        );
+
+        $this->assertSame(1, $outcome->extendedcount);
+        $this->assertSame(extend_time_manager::MAX_CUSTOM_MINUTES, $outcome->minutes);
+    }
+
+    /**
+     * Zero minutes is rejected.
+     */
+    public function test_extend_rejects_zero_minutes(): void {
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $teacher = $generator->create_user();
+        $generator->enrol_user($teacher->id, $course->id, 'editingteacher');
+
+        [$quiz, $cm] = $this->create_timed_quiz($course);
+
+        $this->setUser($teacher);
+
+        $this->expectException(\moodle_exception::class);
+        extend_time_manager::extend_quiz_time($course, $cm, $quiz, 0, 0, extend_time_manager::SCOPE_BULK);
+    }
+
+    /**
+     * A value above MAX_CUSTOM_MINUTES is rejected.
+     */
+    public function test_extend_rejects_minutes_over_max(): void {
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $teacher = $generator->create_user();
+        $generator->enrol_user($teacher->id, $course->id, 'editingteacher');
+
+        [$quiz, $cm] = $this->create_timed_quiz($course);
+
+        $this->setUser($teacher);
+
+        $this->expectException(\moodle_exception::class);
+        extend_time_manager::extend_quiz_time(
+            $course,
+            $cm,
+            $quiz,
+            0,
+            extend_time_manager::MAX_CUSTOM_MINUTES + 1,
+            extend_time_manager::SCOPE_BULK
+        );
+    }
+
+    /**
      * user_can_extend requires manageoverrides capability.
      */
     public function test_user_can_extend_requires_manageoverrides(): void {

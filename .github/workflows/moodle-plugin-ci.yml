@@ -12,5 +12,7 @@ jobs:
     uses: moodle-an-hochschulen/moodle-workflows/.github/workflows/moodle-plugin-ci.yml@main
     with:
       moodle-core-branch: MOODLE_405_STABLE
+      # The plugin ships its own German language pack (lang/de).
+      codebase-check-languagepacks: false
       plugin-dependencies: |
         vadimonus/moodle-quizaccess_onesession,master

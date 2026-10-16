@@ -57,7 +57,12 @@ class quiz_livequizmonitor_report extends mod_quiz\local\reports\report_base {
 
         /** @var monitor_renderer $renderer */
         $renderer = $PAGE->get_renderer('quiz_livequizmonitor', 'monitor');
-        $templatecontext = $renderer->export_for_template($state, $groupid);
+
+        // Standard Moodle group selector. This is an empty string when the quiz
+        // has no group mode, so the toolbar simply omits it in that case.
+        $groupmenu = (string) groups_print_activity_menu($cm, $PAGE->url->out(false), true);
+
+        $templatecontext = $renderer->export_for_template($state, $groupid, $groupmenu);
 
         echo $OUTPUT->render_from_template('quiz_livequizmonitor/monitor_page', $templatecontext);
 

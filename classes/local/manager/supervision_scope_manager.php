@@ -103,7 +103,7 @@ class supervision_scope_manager {
             return false;
         }
 
-        $students = get_enrolled_users($context, 'mod/quiz:attempt', $groupid, 'u.id');
+        $students = monitor_manager::get_allowed_students($cm, $context, $groupid, $userid);
         return isset($students[$userid]);
     }
 }

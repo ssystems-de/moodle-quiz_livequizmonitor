@@ -6,12 +6,15 @@
     Example context (json):
     {
         "description": "Extend time for Jane Student.",
-        "addtimelabel": "Add time",
+        "presetslabel": "Presets",
         "presets": [
             {"minutes": 5, "active": false},
             {"minutes": 10, "active": true},
             {"minutes": 15, "active": false}
         ],
+        "customlabel": "Custom minutes",
+        "custommax": 180,
+        "customvalue": 10,
         "previewlabel": "New end time",
         "previewvalue": "12:30"
     }
@@ -20,8 +23,8 @@
     <p class="livequizmonitor-extend-description" data-region="extend-description">{{description}}</p>
 
     <div class="mb-3">
-        <div class="font-weight-bold mb-2">{{addtimelabel}}</div>
-        <div class="livequizmonitor-extend-presets btn-group" role="group" aria-label="{{addtimelabel}}">
+        <div class="font-weight-bold mb-2">{{presetslabel}}</div>
+        <div class="livequizmonitor-extend-presets btn-group mb-2" role="group" aria-label="{{presetslabel}}">
             {{#presets}}
             <button type="button"
                     class="btn btn-outline-secondary livequizmonitor-extend-preset{{#active}} active{{/active}}"
@@ -31,6 +34,18 @@
             </button>
             {{/presets}}
         </div>
+        <label class="d-block font-weight-bold" for="livequizmonitor-extend-custom">
+            {{customlabel}}
+        </label>
+        <input type="text"
+               inputmode="numeric"
+               pattern="[0-9]*"
+               id="livequizmonitor-extend-custom"
+               class="form-control livequizmonitor-extend-custom"
+               data-region="extend-custom"
+               data-max="{{custommax}}"
+               value="{{customvalue}}">
+        <div class="invalid-feedback" data-region="extend-custom-error"></div>
     </div>
 
     <div>
