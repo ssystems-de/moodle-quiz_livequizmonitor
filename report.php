@@ -24,7 +24,7 @@
 
 use quiz_livequizmonitor\local\manager\monitor_manager;
 use quiz_livequizmonitor\local\manager\supervision_scope_manager;
-use quiz_livequizmonitor\output\monitor_renderer;
+use quiz_livequizmonitor\output\monitor_report;
 
 /**
  * Live monitor quiz report.
@@ -55,16 +55,13 @@ class quiz_livequizmonitor_report extends mod_quiz\local\reports\report_base {
 
         $state = monitor_manager::get_state($course, $cm, $quiz, $groupid);
 
-        /** @var monitor_renderer $renderer */
-        $renderer = $PAGE->get_renderer('quiz_livequizmonitor', 'monitor');
-
         // Standard Moodle group selector. This is an empty string when the quiz
         // has no group mode, so the toolbar simply omits it in that case.
         $groupmenu = (string) groups_print_activity_menu($cm, $PAGE->url->out(false), true);
 
-        $templatecontext = $renderer->export_for_template($state, $groupid, $groupmenu);
-
-        echo $OUTPUT->render_from_template('quiz_livequizmonitor/monitor_page', $templatecontext);
+        // Render through the plugin renderer so that themes can override the page.
+        $report = new monitor_report($state, $groupid, $groupmenu);
+        echo $PAGE->get_renderer('quiz_livequizmonitor')->render($report);
 
         return true;
     }

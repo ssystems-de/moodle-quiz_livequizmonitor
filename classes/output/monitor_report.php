@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Renderer for the live quiz monitor report.
+ * Renderable for the live quiz monitor page.
  *
  * @package   quiz_livequizmonitor
  * @copyright 2026 SSYSTEMS
@@ -24,25 +24,54 @@
 
 namespace quiz_livequizmonitor\output;
 
-use plugin_renderer_base;
 use quiz_livequizmonitor\local\column_helper;
 use quiz_livequizmonitor\local\manager\extend_time_manager;
 use quiz_livequizmonitor\local\manager\monitor_manager;
+use renderable;
+use renderer_base;
 use stdClass;
+use templatable;
 
 /**
- * Output renderer for monitor page templates.
+ * The live quiz monitor page.
+ *
+ * Holds the page data and exports the context for the quiz_livequizmonitor/monitor_page
+ * template. It is rendered by renderer::render_monitor_report(), which themes can override.
  */
-class monitor_renderer extends plugin_renderer_base {
+class monitor_report implements renderable, templatable {
+    /** @var stdClass Monitor state from monitor_manager::get_state(). */
+    protected $state;
+
+    /** @var int Active group id. */
+    protected $groupid;
+
+    /** @var string HTML of the standard group menu ('' if the activity has no group mode). */
+    protected $groupmenu;
+
     /**
-     * Prepare template context from monitor state.
+     * Constructor.
      *
-     * @param stdClass $state Monitor state from monitor_manager.
+     * @param stdClass $state Monitor state from monitor_manager::get_state().
      * @param int $groupid Active group id.
      * @param string $groupmenu HTML of the standard group menu ('' if the activity has no group mode).
+     */
+    public function __construct(stdClass $state, int $groupid, string $groupmenu = '') {
+        $this->state = $state;
+        $this->groupid = $groupid;
+        $this->groupmenu = $groupmenu;
+    }
+
+    /**
+     * Prepare the template context for quiz_livequizmonitor/monitor_page.
+     *
+     * @param renderer_base $output Renderer used to render the page.
      * @return array Template context.
      */
-    public function export_for_template(stdClass $state, int $groupid, string $groupmenu = ''): array {
+    public function export_for_template(renderer_base $output): array {
+        $state = $this->state;
+        $groupid = $this->groupid;
+        $groupmenu = $this->groupmenu;
+
         $updated = userdate($state->updatedat, get_string('strftimetime', 'langconfig'));
         $canextend = !empty($state->canextend);
         $inprogresscount = (int) ($state->inprogresscount ?? $state->summary->inprogress->count);
