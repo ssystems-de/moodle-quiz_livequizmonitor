@@ -745,6 +745,34 @@ final class monitor_manager_test extends advanced_testcase {
     }
 
     /**
+     * Rows without a value for a built-in column sort last in both directions;
+     * ties are broken by fullname A→Z.
+     */
+    public function test_sort_rows_without_value_last(): void {
+        $row = static fn(int $userid, string $fullname, ?int $timeremaining): \stdClass => (object) [
+            'userid' => $userid,
+            'fullname' => $fullname,
+            'status' => monitor_manager::STATUS_INPROGRESS,
+            'timeremaining' => $timeremaining,
+        ];
+        $rows = [
+            $row(1, 'Ann', null),
+            $row(2, 'Ben', 60),
+            $row(3, 'Cal', 300),
+            $row(4, 'Dee', 60),
+        ];
+        $method = new \ReflectionMethod(monitor_manager::class, 'sort_student_rows');
+
+        $asc = $rows;
+        $method->invokeArgs(null, [&$asc, 'timeremaining', 'asc']);
+        $this->assertSame([2, 4, 3, 1], array_column($asc, 'userid'));
+
+        $desc = $rows;
+        $method->invokeArgs(null, [&$desc, 'timeremaining', 'desc']);
+        $this->assertSame([3, 2, 4, 1], array_column($desc, 'userid'));
+    }
+
+    /**
      * Rows sort in-progress, idle, not-started, then completed;
      * ties within a status bucket are broken by fullname.
      */

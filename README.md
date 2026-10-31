@@ -69,6 +69,93 @@ The Live Monitor is a quiz report page backed by AJAX/web services. On load and 
 Typical statuses include not started, in progress, idle (no recent attempt activity), and completed. From each student row, authorised users can open actions such as writing a supervision note or extending quiz time. Optional integrations (for example One Session unblock, or showing the quiz password) appear when the related plugins/settings are available.
 
 
+Extending the monitor
+---------------------
+
+Other plugins can add information and links to the Live Monitor without patching it, using the Moodle Hooks API. All hooks are listed under *Site administration > Development > Hooks overview* (tag `quiz_livequizmonitor`).
+
+| Hook | Runs | Lets you |
+|------|------|----------|
+| `\quiz_livequizmonitor\hook\extend_rows` | page load and every poll | add columns with a value per student, highlight rows as `info`, `warning` or `danger`, and add links to the per-student actions menu |
+| `\quiz_livequizmonitor\hook\before_monitor_page_render` | page load | load your own JavaScript on the monitor page |
+
+`extend_rows` gives you `get_course()`, `get_cm()`, `get_quiz()`, `get_context()`, `get_groupid()`, `get_userids()` and `get_students()`. The students are only those the current user may see (groups and access restrictions are applied). Available student fields: `userid`, `fullname`, `email` (empty if the user may not see it), `status`, `attemptid`, `attemptendat`, `timeremaining`, `progressanswered`, `progresstotal`.
+
+### Minimal example
+
+```php
+// local/sebstatus/db/hooks.php
+$callbacks = [
+    [
+        'hook' => \quiz_livequizmonitor\hook\extend_rows::class,
+        'callback' => [\local_sebstatus\monitor_callbacks::class, 'extend_rows'],
+    ],
+];
+```
+
+```php
+// local/sebstatus/classes/monitor_callbacks.php
+namespace local_sebstatus;
+
+class monitor_callbacks {
+    public static function extend_rows(\quiz_livequizmonitor\hook\extend_rows $hook): void {
+        $hook->add_column('local_sebstatus-battery', get_string('battery', 'local_sebstatus'));
+        // One query for all students of this request, used for the column, highlights and actions.
+        foreach (store::get_battery_levels($hook->get_userids()) as $userid => $level) {
+            $hook->set_value('local_sebstatus-battery', $userid, $level . ' %', $level);
+            if ($level < 15) {
+                $hook->set_highlight($userid, $hook::SEVERITY_DANGER);
+            }
+            $hook->add_action($userid, get_string('connectionlog', 'local_sebstatus'),
+                new \moodle_url('/local/sebstatus/log.php', ['userid' => $userid]),
+                new \core\output\pix_icon('i/info', ''), true);
+        }
+    }
+}
+```
+
+### Rules
+
+- **Column ids** are `<component>-<name>`, e.g. `local_sebstatus-battery`, where `component` is your plugin and `name` may only contain lowercase letters and digits. Pass the full id to `add_column()`, `set_value()` and `set_html_value()`. Columns appear after the built-in columns, before *Actions*, and can be sorted and hidden like built-in columns. Pass `defaulthidden: true` to `add_column()` to hide a column until the user shows it.
+- **Values**: `set_value()` takes plain text (escaped). `set_html_value()` takes HTML, which is cleaned (no scripts or event handlers). The optional sort value can be a number or text; without it, rows sort by the visible text. Rows without a value sort last.
+- **Highlights**: if several plugins highlight the same row, the highest severity wins (`danger` > `warning` > `info`).
+- **Actions** are plain links (`moodle_url`), shown after the built-in entries. Interactive actions are not supported; use the page hook and your own JavaScript instead.
+- **Errors**: exceptions thrown by your callback are not caught, as with any other Moodle hook. Invalid input (unknown column, user not shown in the monitor, unknown severity) is ignored with a developer debugging message.
+- **Performance**: `extend_rows` runs on every poll, about every 5 seconds for every open monitor. Load your data for all students in one batch and cache external data.
+- **Permissions**: hooks only run for users with `quiz/livequizmonitor:view`. Add your own capability checks inside your callback if needed.
+- **New columns** appear after a page reload; the table header is not rebuilt during polling.
+
+### JavaScript
+
+Load your module in the page hook:
+
+```php
+public static function before_monitor_page_render(\quiz_livequizmonitor\hook\before_monitor_page_render $hook): void {
+    $hook->get_page()->requires->js_call_amd('local_sebstatus/monitor_gauge', 'init');
+}
+```
+
+The monitor dispatches these events on its root element `[data-region="live-quiz-monitor"]`:
+
+| Event | When | `event.detail` |
+|-------|------|----------------|
+| `quiz_livequizmonitor:staterefreshed` | after each poll, once the table is in sync | `{state}` |
+| `quiz_livequizmonitor:rowrendered` | after a row was inserted or its data changed | `{row, student}` |
+
+```js
+import {eventTypes} from 'quiz_livequizmonitor/events';
+
+export const init = () => {
+    const root = document.querySelector('[data-region="live-quiz-monitor"]');
+    root?.addEventListener(eventTypes.rowRendered, ({detail}) => {
+        const cell = detail.row.querySelector('[data-colcontent="local_sebstatus-battery"]');
+        // Decorate your own cell.
+    });
+};
+```
+
+For watchers on the monitor's reactive state, use `getReactive()` from `quiz_livequizmonitor/monitor`. It returns a promise that resolves once the monitor is initialised. Treat the state as read-only and do not change the monitor's own markup.
+
 Theme support
 -------------
 

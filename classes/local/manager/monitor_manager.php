@@ -35,6 +35,8 @@ use core_user\fields;
 use mod_quiz\access_manager;
 use mod_quiz\quiz_attempt;
 use mod_quiz\quiz_settings;
+use quiz_livequizmonitor\hook\extend_rows;
+use quiz_livequizmonitor\local\column_helper;
 use stdClass;
 
 /**
@@ -58,6 +60,36 @@ class monitor_manager {
 
     /** @var string[] Convenient array of in-progress and idle statuses. */
     public const INPROGRESS_OR_IDLE = [self::STATUS_INPROGRESS, self::STATUS_IDLE];
+
+    /** @var int[] Sort rank of each status: in progress, idle, not started, then completed. */
+    protected const STATUS_SORT_RANK = [
+        self::STATUS_INPROGRESS => 0,
+        self::STATUS_IDLE => 1,
+        self::STATUS_NOTSTARTED => 2,
+        self::STATUS_COMPLETED => 3,
+    ];
+
+    /** @var string[] Student fields handed to the extend_rows hook (see extend_rows::get_students()). */
+    protected const HOOK_STUDENT_FIELDS = [
+        'userid',
+        'fullname',
+        'email',
+        'status',
+        'attemptid',
+        'attemptendat',
+        'timeremaining',
+        'progressanswered',
+        'progresstotal',
+    ];
+
+    /** @var string[] Row field to sort by for each built-in sortable column. */
+    protected const SORT_FIELDS = [
+        'status' => 'status',
+        'fullname' => 'fullname',
+        'email' => 'email',
+        'progress' => 'progresspercent',
+        'timeremaining' => 'timeremaining',
+    ];
 
     /**
      * Quiz attempt state used on modified Moodle 4.5 and Moodle 5+.
@@ -123,6 +155,7 @@ class monitor_manager {
      * @param int $groupid Requested group id (resolved via supervision_scope_manager::resolve_group()).
      * @param string $sortcolumn Column to sort by.
      * @param string $sortdirection Sort direction ('asc' or 'desc').
+     * @param bool $withextensions Whether to dispatch the extension hooks; false for callers that do not display the state.
      * @return stdClass MonitorState payload.
      */
     public static function get_state(
@@ -131,7 +164,8 @@ class monitor_manager {
         stdClass $quiz,
         int $groupid = 0,
         string $sortcolumn = 'status',
-        string $sortdirection = 'asc'
+        string $sortdirection = 'asc',
+        bool $withextensions = true
     ): stdClass {
         global $DB;
 
@@ -204,6 +238,24 @@ class monitor_manager {
                 $showemail,
                 $canextend
             );
+        }
+
+        // Let other plugins add columns, row highlights and row actions. This runs before the
+        // sort, so rows can be sorted by extension columns like by built-in ones.
+        $extensioncolumns = [];
+        if ($withextensions) {
+            $hook = new extend_rows($course, $cm, $quiz, $groupid, self::get_hook_students($rows));
+            \core\di::get(\core\hook\manager::class)->dispatch($hook);
+
+            $extensioncolumns = $hook->get_columns();
+            $cells = $hook->get_cells();
+            $highlights = $hook->get_highlights();
+            $actions = $hook->get_actions();
+            foreach ($rows as $row) {
+                $row->extensioncells = $cells[$row->userid] ?? [];
+                $row->highlight = $highlights[$row->userid] ?? '';
+                $row->extensionactions = $actions[$row->userid] ?? [];
+            }
         }
 
         self::sort_student_rows($rows, $sortcolumn, $sortdirection);
@@ -311,6 +363,7 @@ class monitor_manager {
             'nooverridecount' => $nooverridecount,
             'useroverridecount' => $useroverridecount,
             'groupoverridecount' => $groupoverridecount,
+            'extensioncolumns' => $extensioncolumns,
         ];
 
         return $state;
@@ -701,6 +754,9 @@ class monitor_manager {
             'hastimeoverride' => false,
             'isblocked' => false,
             'unblockactionenabled' => false,
+            'extensioncells' => [],
+            'highlight' => '',
+            'extensionactions' => [],
         ];
     }
 
@@ -753,10 +809,34 @@ class monitor_manager {
     }
 
     /**
+     * Reduced copies of the rows for the extend_rows hook, indexed by user id.
+     *
+     * @param stdClass[] $rows Student rows.
+     * @return stdClass[]
+     */
+    protected static function get_hook_students(array $rows): array {
+        $students = [];
+        foreach ($rows as $row) {
+            $student = new stdClass();
+            foreach (self::HOOK_STUDENT_FIELDS as $field) {
+                $student->{$field} = $row->{$field} ?? null;
+            }
+            $students[(int) $row->userid] = $student;
+        }
+        return $students;
+    }
+
+    /**
      * Sort rows by the requested column and direction.
      *
+     * Rows without a value for the column sort last in both directions. Ties are broken
+     * by fullname A→Z, regardless of the sort direction.
+     *
+     * Note: the sorting algorithm here mirrors the one in "getStudentRows()".
+     * See "amd/src/monitor.js".
+     *
      * @param array $rows Student rows (by reference).
-     * @param string $sortcolumn Column to sort by.
+     * @param string $sortcolumn Column to sort by: a built-in column or an extension column id.
      * @param string $sortdirection Sort direction: asc or desc.
      */
     protected static function sort_student_rows(
@@ -764,65 +844,66 @@ class monitor_manager {
         string $sortcolumn = 'status',
         string $sortdirection = 'asc'
     ): void {
-        $sortable = [
-            'status' => 'status',
-            'fullname' => 'fullname',
-            'email' => 'email',
-            'progress' => 'progresspercent',
-            'timeremaining' => 'timeremaining',
-        ];
-
         // Sanity check on incoming values.
-        $sortcolumn = $sortable[$sortcolumn] ?? 'status';
         $sortdirection = $sortdirection === 'desc' ? 'desc' : 'asc';
+        if (!isset(self::SORT_FIELDS[$sortcolumn]) && !column_helper::is_extension_column_id($sortcolumn)) {
+            $sortcolumn = 'status';
+        }
 
-        $rank = [
-            self::STATUS_INPROGRESS => 0,
-            self::STATUS_IDLE => 1,
-            self::STATUS_NOTSTARTED => 2,
-            self::STATUS_COMPLETED => 3,
-        ];
+        // Look up each row's sort key once instead of on every comparison.
+        $keys = [];
+        foreach ($rows as $row) {
+            $keys[$row->userid] = self::get_sort_key($row, $sortcolumn);
+        }
 
-        usort($rows, static function (
-            stdClass $a,
-            stdClass $b
-        ) use (
-            $sortcolumn,
-            $sortdirection,
-            $rank
-        ): int {
-            if ($sortcolumn === 'status') {
-                // Status uses defined rank rather than alphabetical order.
-                // The spaceship operator, <=>, works like strcmp for numbers.
-                $cmp = ($rank[$a->status] ?? 99) <=> ($rank[$b->status] ?? 99);
+        usort($rows, static function (stdClass $a, stdClass $b) use ($keys, $sortdirection): int {
+            $keya = $keys[$a->userid];
+            $keyb = $keys[$b->userid];
+
+            if ($keya === null || $keyb === null) {
+                // Rows without a value always sort last, in both directions.
+                $cmp = ($keya === null) <=> ($keyb === null);
             } else {
-                $valuea = $a->{$sortcolumn} ?? null;
-                $valueb = $b->{$sortcolumn} ?? null;
-
-                if ($valuea === $valueb) {
-                    $cmp = 0;
-                } else if ($valuea === null) {
-                    $cmp = 1;
-                } else if ($valueb === null) {
-                    $cmp = -1;
-                } else if (is_numeric($valuea) && is_numeric($valueb)) {
-                    $cmp = $valuea <=> $valueb;
+                if ($keya['numeric'] && $keyb['numeric']) {
+                    $cmp = (float) $keya['value'] <=> (float) $keyb['value'];
                 } else {
-                    $cmp = strcmp((string) $valuea, (string) $valueb);
+                    // Normalise strcmp() results, so negating them is safe.
+                    $cmp = strcmp((string) $keya['value'], (string) $keyb['value']) <=> 0;
+                }
+                if ($sortdirection === 'desc') {
+                    $cmp = -$cmp;
                 }
             }
 
-            if ($sortdirection === 'desc') {
-                $cmp = -$cmp;
-            }
-
             // Name tie-break stays A→Z regardless of sort direction.
-            if ($cmp === 0) {
-                $cmp = strcmp($a->fullname, $b->fullname);
-            }
-
-            return $cmp;
+            return $cmp ?: strcmp($a->fullname, $b->fullname);
         });
+    }
+
+    /**
+     * Sort key of a row for a column.
+     *
+     * @param stdClass $row Student row.
+     * @param string $sortcolumn Built-in column or extension column id.
+     * @return array|null ['value' => int|float|string, 'numeric' => bool], or null if the row has no value.
+     */
+    protected static function get_sort_key(stdClass $row, string $sortcolumn): ?array {
+        if ($sortcolumn === 'status') {
+            // Status sorts by its defined rank rather than alphabetically.
+            return ['value' => self::STATUS_SORT_RANK[$row->status] ?? 99, 'numeric' => true];
+        }
+
+        if (isset(self::SORT_FIELDS[$sortcolumn])) {
+            $value = $row->{self::SORT_FIELDS[$sortcolumn]} ?? null;
+            return $value === null ? null : ['value' => $value, 'numeric' => is_numeric($value)];
+        }
+
+        foreach ($row->extensioncells ?? [] as $cell) {
+            if ($cell['column'] === $sortcolumn) {
+                return ['value' => $cell['sortvalue'], 'numeric' => $cell['sortnumeric']];
+            }
+        }
+        return null;
     }
 
     /**
