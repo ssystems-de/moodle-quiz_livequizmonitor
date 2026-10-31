@@ -50,6 +50,12 @@ class set_hidden_columns extends external_api {
                 VALUE_DEFAULT,
                 []
             ),
+            'shown' => new external_multiple_structure(
+                new external_value(PARAM_ALPHANUMEXT, 'Shown column id'),
+                'Extension columns hidden by default that the user has chosen to show',
+                VALUE_DEFAULT,
+                []
+            ),
         ]);
     }
 
@@ -58,12 +64,14 @@ class set_hidden_columns extends external_api {
      *
      * @param int $cmid Course module id.
      * @param array $hidden Column ids to hide.
+     * @param array $shown Default-hidden extension columns to show.
      * @return array
      */
-    public static function execute(int $cmid, array $hidden): array {
+    public static function execute(int $cmid, array $hidden, array $shown = []): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'cmid' => $cmid,
             'hidden' => $hidden,
+            'shown' => $shown,
         ]);
 
         $cm = get_coursemodule_from_id('quiz', $params['cmid'], 0, false, MUST_EXIST);
@@ -72,9 +80,9 @@ class set_hidden_columns extends external_api {
         self::validate_context($context);
         require_capability('quiz/livequizmonitor:view', $context);
 
-        $saved = column_helper::set_hidden_columns($params['hidden']);
+        $saved = column_helper::set_hidden_columns($params['hidden'], 0, $params['shown']);
 
-        return ['hidden' => $saved];
+        return ['hidden' => $saved, 'shown' => column_helper::get_shown_columns()];
     }
 
     /**
@@ -87,6 +95,10 @@ class set_hidden_columns extends external_api {
             'hidden' => new external_multiple_structure(
                 new external_value(PARAM_ALPHANUMEXT, 'Hidden column id'),
                 'The saved (validated) set of hidden column ids'
+            ),
+            'shown' => new external_multiple_structure(
+                new external_value(PARAM_ALPHANUMEXT, 'Shown column id'),
+                'The saved set of shown default-hidden extension column ids'
             ),
         ]);
     }

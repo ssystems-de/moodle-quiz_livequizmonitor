@@ -17,7 +17,12 @@
         "onesessionactive": false,
         "unblocklabel": "Unblock",
         "unblockactionenabled": false,
-        "attemptid": 7
+        "attemptid": 7,
+        "hasextensionactions": true,
+        "extensionactions": [
+            {"label": "Show connection log", "url": "https://example.com/log.php?id=42",
+             "iconkey": "i/info", "iconcomponent": "core", "newtab": true}
+        ]
     }
 }}
 <div class="dropdown livequizmonitor-row-actions" data-region="row-actions">
@@ -89,5 +94,8 @@
                 title="{{#str}}opensinnewwindow{{/str}}"></i>
         </a>
         {{/canviewlogs}}
+        <div data-region="extension-actions">
+            {{> quiz_livequizmonitor/extension_actions }}
+        </div>
     </div>
 </div>

@@ -29,6 +29,7 @@
 import Ajax from 'core/ajax';
 
 const HIDDEN_COLUMNS_ATTR = 'data-hidden-columns';
+const SHOWN_COLUMNS_ATTR = 'data-shown-columns';
 const HIDDEN_CLASS = 'livequizmonitor-col-hidden';
 const COLLAPSED_HEADER_CLASS = 'livequizmonitor-th-collapsed';
 
@@ -38,8 +39,25 @@ const COLLAPSED_HEADER_CLASS = 'livequizmonitor-th-collapsed';
  * @param {HTMLElement} root Monitor root element
  * @returns {Set<string>}
  */
-export const parseHiddenColumns = (root) => {
-    const raw = root.getAttribute(HIDDEN_COLUMNS_ATTR) || '[]';
+export const parseHiddenColumns = (root) => parseColumnList(root, HIDDEN_COLUMNS_ATTR);
+
+/**
+ * Read the extension columns (hidden by default) the user has chosen to show.
+ *
+ * @param {HTMLElement} root Monitor root element
+ * @returns {Set<string>}
+ */
+export const parseShownColumns = (root) => parseColumnList(root, SHOWN_COLUMNS_ATTR);
+
+/**
+ * Parse a JSON list of column ids from an attribute of the root element.
+ *
+ * @param {HTMLElement} root Monitor root element
+ * @param {string} attribute Attribute name
+ * @returns {Set<string>}
+ */
+const parseColumnList = (root, attribute) => {
+    const raw = root.getAttribute(attribute) || '[]';
     try {
         const parsed = JSON.parse(raw);
         return new Set(Array.isArray(parsed) ? parsed : []);
@@ -94,16 +112,18 @@ export const applyColumnVisibility = (root, hiddenColumns) => {
  *
  * @param {number} cmid Course module id
  * @param {Set<string>} hiddenColumns Column ids to hide
+ * @param {Set<string>} [shownColumns] Extension columns hidden by default that the user has shown
  * @returns {Promise<object>}
  */
-export const saveHiddenColumns = (cmid, hiddenColumns) => {
+export const saveHiddenColumns = (cmid, hiddenColumns, shownColumns = new Set()) => {
     return Ajax.call([{
         methodname: 'quiz_livequizmonitor_set_hidden_columns',
         args: {
             cmid,
             hidden: [...hiddenColumns],
+            shown: [...shownColumns],
         },
     }])[0];
 };
 
-export default {parseHiddenColumns, applyColumnVisibility, saveHiddenColumns};
+export default {parseHiddenColumns, parseShownColumns, applyColumnVisibility, saveHiddenColumns};

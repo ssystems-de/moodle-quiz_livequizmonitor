@@ -111,4 +111,42 @@ final class column_helper_test extends advanced_testcase {
 
         $this->assertSame([], column_helper::get_hidden_columns((int) $user->id));
     }
+
+    /**
+     * Extension column ids are saved by format; ids of columns that no longer exist are dropped on read.
+     */
+    public function test_extension_columns_in_hidden_preference(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $saved = column_helper::set_hidden_columns(
+            ['email', 'local_sebstatus-battery', 'local_gone-old', 'Bad-Id', 'nohyphen'],
+            (int) $user->id
+        );
+        $this->assertSame(['email', 'local_sebstatus-battery', 'local_gone-old'], $saved);
+
+        $extensioncolumns = [['id' => 'local_sebstatus-battery', 'label' => 'Battery', 'defaulthidden' => false]];
+        $this->assertSame(
+            ['email', 'local_sebstatus-battery'],
+            column_helper::get_hidden_columns((int) $user->id, $extensioncolumns)
+        );
+        // Without the extension column in the request, its id is not reported as hidden.
+        $this->assertSame(['email'], column_helper::get_hidden_columns((int) $user->id));
+    }
+
+    /**
+     * A default-hidden extension column is hidden until the user shows it.
+     */
+    public function test_default_hidden_extension_column(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $extensioncolumns = [['id' => 'local_sebstatus-wifi', 'label' => 'Wi-Fi', 'defaulthidden' => true]];
+
+        $this->assertSame(['local_sebstatus-wifi'], column_helper::get_hidden_columns((int) $user->id, $extensioncolumns));
+
+        column_helper::set_hidden_columns([], (int) $user->id, ['local_sebstatus-wifi', 'email']);
+
+        $this->assertSame(['local_sebstatus-wifi'], column_helper::get_shown_columns((int) $user->id));
+        $this->assertSame([], column_helper::get_hidden_columns((int) $user->id, $extensioncolumns));
+    }
 }

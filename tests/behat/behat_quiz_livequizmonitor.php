@@ -246,6 +246,15 @@ class behat_quiz_livequizmonitor extends behat_base {
     }
 
     /**
+     * Switch on the extension hook callbacks of \quiz_livequizmonitor\local\extension\behat_fixture.
+     *
+     * @Given /^the live quiz monitor extension fixture is enabled$/
+     */
+    public function the_live_quiz_monitor_extension_fixture_is_enabled(): void {
+        set_config('behatextensionfixture', 1, 'quiz_livequizmonitor');
+    }
+
+    /**
      * Check that students appear in the expected order.
      *
      * @Then /^the following students should appear in order:$/

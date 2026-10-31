@@ -25,6 +25,8 @@
 namespace quiz_livequizmonitor\output;
 
 use plugin_renderer_base;
+use quiz_livequizmonitor\hook\before_monitor_page_render;
+use quiz_livequizmonitor\local\extension\extension_dispatcher;
 
 /**
  * Main renderer of the live quiz monitor report.
@@ -32,6 +34,9 @@ use plugin_renderer_base;
  * This is the single place where the monitor page is rendered. Themes can change the
  * page by overriding render_monitor_report() in
  * theme_<name>\output\quiz_livequizmonitor_renderer.
+ *
+ * It is also where other plugins get the chance to add their own JavaScript to the page
+ * (hook \quiz_livequizmonitor\hook\before_monitor_page_render).
  */
 class renderer extends plugin_renderer_base {
     /**
@@ -41,6 +46,9 @@ class renderer extends plugin_renderer_base {
      * @return string HTML.
      */
     public function render_monitor_report(monitor_report $report): string {
+        // Let other plugins load their scripts; a failing plugin cannot break the page.
+        extension_dispatcher::dispatch_isolated(new before_monitor_page_render($report, $this->page));
+
         return $this->render_from_template('quiz_livequizmonitor/monitor_page', $report->export_for_template($this));
     }
 }

@@ -1,0 +1,59 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template quiz_livequizmonitor/extension_actions
+
+    Row action links added by other plugins (hook quiz_livequizmonitor\hook\extend_row_actions).
+    Rendered inside row_action_menu on page load and by the browser when the actions change.
+
+    Example context (json):
+    {
+        "hasextensionactions": true,
+        "extensionactions": [
+            {
+                "label": "Show connection log",
+                "url": "https://example.com/local/sebstatus/log.php?id=42",
+                "iconkey": "i/info",
+                "iconcomponent": "core",
+                "newtab": true
+            }
+        ],
+        "_extension_actions_lint_wrapper": true
+    }
+}}
+{{#_extension_actions_lint_wrapper}}
+<div role="menu">
+{{/_extension_actions_lint_wrapper}}
+{{#hasextensionactions}}
+<div class="dropdown-divider livequizmonitor-extension-divider" role="presentation"></div>
+{{#extensionactions}}
+<a href="{{url}}"
+   class="dropdown-item menu-action"
+   role="menuitem"
+   {{#newtab}}target="_blank"{{/newtab}}>
+    {{#iconkey}}{{#pix}}{{iconkey}}, {{iconcomponent}}{{/pix}}{{/iconkey}}
+    <span class="menu-action-text">{{label}}</span>
+    {{#newtab}}
+    <i class="fa-solid fa-up-right-from-square" aria-hidden="true"
+        title="{{#str}}opensinnewwindow{{/str}}"></i>
+    {{/newtab}}
+</a>
+{{/extensionactions}}
+{{/hasextensionactions}}
+{{#_extension_actions_lint_wrapper}}
+</div>
+{{/_extension_actions_lint_wrapper}}

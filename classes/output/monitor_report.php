@@ -24,6 +24,7 @@
 
 namespace quiz_livequizmonitor\output;
 
+use cm_info;
 use quiz_livequizmonitor\local\column_helper;
 use quiz_livequizmonitor\local\manager\extend_time_manager;
 use quiz_livequizmonitor\local\manager\monitor_manager;
@@ -48,6 +49,15 @@ class monitor_report implements renderable, templatable {
     /** @var string HTML of the standard group menu ('' if the activity has no group mode). */
     protected $groupmenu;
 
+    /** @var stdClass|null Course record, loaded on demand. */
+    protected $course = null;
+
+    /** @var cm_info|null Quiz course module, loaded on demand. */
+    protected $cm = null;
+
+    /** @var stdClass|null Quiz record, loaded on demand. */
+    protected $quiz = null;
+
     /**
      * Constructor.
      *
@@ -59,6 +69,67 @@ class monitor_report implements renderable, templatable {
         $this->state = $state;
         $this->groupid = $groupid;
         $this->groupmenu = $groupmenu;
+    }
+
+    /**
+     * Monitor state the page is rendered from.
+     *
+     * @return stdClass
+     */
+    public function get_state(): stdClass {
+        return $this->state;
+    }
+
+    /**
+     * Active group id.
+     *
+     * @return int
+     */
+    public function get_groupid(): int {
+        return $this->groupid;
+    }
+
+    /**
+     * Course of the monitored quiz.
+     *
+     * @return stdClass
+     */
+    public function get_course(): stdClass {
+        $this->load_course_and_cm();
+        return $this->course;
+    }
+
+    /**
+     * Course module of the monitored quiz.
+     *
+     * @return cm_info
+     */
+    public function get_cm(): cm_info {
+        $this->load_course_and_cm();
+        return $this->cm;
+    }
+
+    /**
+     * Record of the monitored quiz.
+     *
+     * @return stdClass
+     */
+    public function get_quiz(): stdClass {
+        global $DB;
+
+        if ($this->quiz === null) {
+            $this->quiz = $DB->get_record('quiz', ['id' => $this->get_cm()->instance], '*', MUST_EXIST);
+        }
+        return $this->quiz;
+    }
+
+    /**
+     * Load course and course module from the ids in the state (modinfo is cached).
+     */
+    protected function load_course_and_cm(): void {
+        if ($this->cm === null) {
+            [$this->course, $this->cm] = get_course_and_cm_from_cmid($this->state->cmid, 'quiz');
+        }
     }
 
     /**
@@ -81,6 +152,7 @@ class monitor_report implements renderable, templatable {
         $canviewattempts = !empty($state->canviewattempts);
         $canviewlogs = !empty($state->canviewlogs);
         $showemailcolumn = !empty($state->students) && !empty($state->students[0]->showemail);
+        $extensioncolumns = $state->extensioncolumns ?? [];
 
         $students = [];
         foreach ($state->students as $row) {
@@ -106,6 +178,10 @@ class monitor_report implements renderable, templatable {
             $student['usertimeoverrideflaglabel'] = get_string('filter:usertimeoverrideflag', 'quiz_livequizmonitor');
             $student['groupoverrideflaglabel'] = get_string('filter:groupoverrideflag', 'quiz_livequizmonitor');
             $student['noteflaglabel'] = get_string('notes:hasnoteflag', 'quiz_livequizmonitor');
+            $student['extensioncells'] = $this->export_extension_cells($extensioncolumns, $row->extensioncells ?? []);
+            $student['highlight'] = (string) ($row->highlight ?? '');
+            $student['extensionactions'] = $row->extensionactions ?? [];
+            $student['hasextensionactions'] = !empty($row->extensionactions);
             $students[] = $student;
         }
 
@@ -152,7 +228,8 @@ class monitor_report implements renderable, templatable {
             'actionsmenulabel' => get_string('actions'),
             'tableheaders' => $tableheaders,
             'columns' => $this->export_columns($state, $tableheaders),
-            'hiddencolumnsjson' => json_encode(column_helper::get_hidden_columns()),
+            'hiddencolumnsjson' => json_encode(column_helper::get_hidden_columns(0, $extensioncolumns)),
+            'showncolumnsjson' => json_encode(column_helper::get_shown_columns()),
             'showemailcolumn' => $showemailcolumn,
             'showactionscolumn' => true, // Always show Actions column.
             'actionscolumnlabel' => get_string('table:actions', 'quiz_livequizmonitor'),
@@ -161,6 +238,29 @@ class monitor_report implements renderable, templatable {
             'sortascending' => get_string('asc'),
             'sortdescending' => get_string('desc'),
         ];
+    }
+
+    /**
+     * Build one cell per extension column, in column order, for a student row.
+     *
+     * Every row gets a cell for every extension column, so the table stays aligned
+     * when a plugin has no value for a student.
+     *
+     * @param array[] $extensioncolumns Extension columns (['id', 'label', 'defaulthidden']).
+     * @param array[] $cells The student's extension cells (['column', 'display', ...]).
+     * @return array[] List of ['column' => string, 'display' => string].
+     */
+    protected function export_extension_cells(array $extensioncolumns, array $cells): array {
+        $displays = array_column($cells, 'display', 'column');
+
+        $result = [];
+        foreach ($extensioncolumns as $column) {
+            $result[] = [
+                'column' => $column['id'],
+                'display' => $displays[$column['id']] ?? '',
+            ];
+        }
+        return $result;
     }
 
     /**
@@ -196,9 +296,24 @@ class monitor_report implements renderable, templatable {
             'email' => !empty($state->students) && !empty($state->students[0]->showemail),
         ];
 
-        $columns = [];
+        // Extension columns from other plugins go after the built-in data columns, before actions.
+        $registry = [];
         foreach (column_helper::get_columns() as $columnid => $column) {
-            $label = $tableheaders[$columnid] ?? $columnid;
+            if ($columnid === 'actions') {
+                foreach ($state->extensioncolumns ?? [] as $extensioncolumn) {
+                    $registry[$extensioncolumn['id']] = [
+                        'label' => $extensioncolumn['label'],
+                        'locked' => false,
+                        'defaulthidden' => !empty($extensioncolumn['defaulthidden']),
+                    ];
+                }
+            }
+            $registry[$columnid] = ['label' => $tableheaders[$columnid] ?? $columnid] + $column;
+        }
+
+        $columns = [];
+        foreach ($registry as $columnid => $column) {
+            $label = $column['label'];
             $locked = !empty($column['locked']);
             // Status is locked (always visible) but still sortable; actions is neither toggleable nor sortable.
             $sortable = $columnid !== 'actions';
@@ -211,6 +326,7 @@ class monitor_report implements renderable, templatable {
                 'hidelabel' => get_string('columns:hidecolumn', 'quiz_livequizmonitor', $label),
                 'showlabel' => get_string('columns:showcolumn', 'quiz_livequizmonitor', $label),
                 'sortable' => $sortable,
+                'defaulthidden' => !empty($column['defaulthidden']),
             ];
 
             if ($sortable) {

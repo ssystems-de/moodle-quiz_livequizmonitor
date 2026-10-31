@@ -255,4 +255,23 @@ final class provider_test extends provider_testcase {
         $this->assertSame('Erased author', $studentexport->notes_about_user[0]->content);
         $this->assertFalse(property_exists($studentexport->notes_about_user[0], 'usermodified'));
     }
+
+    /**
+     * Both column preferences are exported.
+     */
+    public function test_export_user_preferences(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        \quiz_livequizmonitor\local\column_helper::set_hidden_columns(
+            ['email'],
+            (int) $user->id,
+            ['local_sebstatus-wifi']
+        );
+
+        provider::export_user_preferences((int) $user->id);
+
+        $preferences = writer::with_context(\context_system::instance())->get_user_preferences(self::COMPONENT);
+        $this->assertSame('["email"]', $preferences->quiz_livequizmonitor_hiddencolumns->value);
+        $this->assertSame('["local_sebstatus-wifi"]', $preferences->quiz_livequizmonitor_showncolumns->value);
+    }
 }

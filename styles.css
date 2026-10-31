@@ -340,3 +340,34 @@
 [data-colcontent].livequizmonitor-col-hidden {
     display: none;
 }
+
+/* Row highlights set by other plugins (hook extend_row_highlights). */
+.livequizmonitor-table tr[data-highlight="info"] > td {
+    background-color: rgba(0, 129, 150, 0.08);
+}
+
+.livequizmonitor-table tr[data-highlight="warning"] > td {
+    background-color: rgba(240, 173, 78, 0.18);
+}
+
+.livequizmonitor-table tr[data-highlight="danger"] > td {
+    background-color: rgba(202, 49, 32, 0.12);
+}
+
+.livequizmonitor-table tr[data-highlight="info"] > td:first-child {
+    box-shadow: inset 4px 0 0 var(--bs-info, var(--info, #008196));
+}
+
+.livequizmonitor-table tr[data-highlight="warning"] > td:first-child {
+    box-shadow: inset 4px 0 0 var(--bs-warning, var(--warning, #f0ad4e));
+}
+
+.livequizmonitor-table tr[data-highlight="danger"] > td:first-child {
+    box-shadow: inset 4px 0 0 var(--bs-danger, var(--danger, #ca3120));
+}
+
+/* Clearly separate the row actions of other plugins from the built-in ones. */
+.livequizmonitor-row-actions .livequizmonitor-extension-divider {
+    border-top: 1px solid var(--bs-secondary-color, #adb5bd);
+    opacity: 0.6;
+}
