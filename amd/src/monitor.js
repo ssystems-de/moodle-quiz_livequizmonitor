@@ -28,9 +28,11 @@ import {BaseComponent} from 'core/reactive';
 import {matchesFilters, countVisible} from 'quiz_livequizmonitor/filter_utils';
 import {
     parseHiddenColumns,
+    parseShownColumns,
     applyColumnVisibility,
     saveHiddenColumns,
 } from 'quiz_livequizmonitor/column_visibility';
+import {notifyRowRendered, notifyStateRefreshed} from 'quiz_livequizmonitor/events';
 import {ALL_FLAGS, createMonitorReactive, formatDuration} from 'quiz_livequizmonitor/reactive/monitor_state';
 import {showPasswordModal} from 'quiz_livequizmonitor/show_password_modal';
 import {showExtendModal} from 'quiz_livequizmonitor/extend_time_modal';
@@ -39,6 +41,32 @@ import {showUnblockModal} from 'quiz_livequizmonitor/unblock_confirm_modal';
 
 /** Fixed background refresh interval in milliseconds. */
 const POLL_INTERVAL_MS = 5000;
+
+/** Format of extension column ids added by other plugins: "<component>-<name>". */
+const EXTENSION_COLUMN_PATTERN = /^[a-z][a-z0-9_]*-[a-z0-9]+$/;
+
+/** Sort rank of each status: in progress, idle, not started, then completed. */
+const STATUS_SORT_RANK = {
+    inprogress: 0,
+    idle: 1,
+    notstarted: 2,
+    completed: 3,
+};
+
+/** Row field to sort by for each built-in sortable column. */
+const SORT_FIELDS = {
+    status: 'status',
+    fullname: 'fullname',
+    email: 'email',
+    progress: 'progresspercent',
+    timeremaining: 'timeremaining',
+};
+
+/** Resolves the monitor's reactive instance once init() has created it. */
+let resolveReactive;
+const reactivePromise = new Promise((resolve) => {
+    resolveReactive = resolve;
+});
 
 /**
  * Reactive component that syncs monitor state to the page DOM.
@@ -98,6 +126,7 @@ class MonitorComponent extends BaseComponent {
         this.localgeneration = 0;
         this.syncInFlight = false;
         this.syncQueued = false;
+        this.syncPromise = Promise.resolve();
         this.hasReceivedPoll = false;
     }
 
@@ -133,6 +162,7 @@ class MonitorComponent extends BaseComponent {
         this.unblockRowLabel = root.dataset.unblockLabel ?? 'Unblock user';
         this.blockedFlagLabel = root.dataset.blockedFlagLabel ?? 'Blocked';
         this.hiddenColumns = parseHiddenColumns(root);
+        this.shownColumns = parseShownColumns(root);
         this.showAttemptsLabel = root.dataset.showAttemptsLabel ?? 'Show attempts';
         this.canviewattempts = root.dataset.canviewattempts === '1';
         this.showLogsLabel = root.dataset.showLogsLabel ?? 'Show logs';
@@ -187,6 +217,9 @@ class MonitorComponent extends BaseComponent {
             {watch: 'students.hastimeoverride:updated', handler: this.renderStudents},
             {watch: 'students.isblocked:updated', handler: this.renderStudents},
             {watch: 'students.unblockactionenabled:updated', handler: this.renderStudents},
+            {watch: 'students.extensioncells:updated', handler: this.renderStudents},
+            {watch: 'students.highlight:updated', handler: this.renderStudents},
+            {watch: 'students.extensionactions:updated', handler: this.renderStudents},
             {watch: 'meta.onesessionactive:updated', handler: this.renderStudents},
             {watch: 'meta.canunblock:updated', handler: this.renderStudents},
             {watch: 'meta.hasstudents:updated', handler: this.renderCohortLayout},
@@ -247,15 +280,21 @@ class MonitorComponent extends BaseComponent {
             return;
         }
 
+        // Extension columns hidden by default must remember an explicit "show".
+        const defaulthidden = button.dataset.defaulthidden === '1';
         if (this.hiddenColumns.has(column)) {
             this.hiddenColumns.delete(column);
+            if (defaulthidden) {
+                this.shownColumns.add(column);
+            }
         } else {
             this.hiddenColumns.add(column);
+            this.shownColumns.delete(column);
         }
 
         this.renderColumnVisibility();
 
-        saveHiddenColumns(this.cmid, this.hiddenColumns).catch((e) => {
+        saveHiddenColumns(this.cmid, this.hiddenColumns, this.shownColumns).catch((e) => {
             Notification.exception(e);
         });
     }
@@ -724,7 +763,9 @@ class MonitorComponent extends BaseComponent {
             this.reactive.dispatch('refreshState', response);
             this.hasReceivedPoll = true;
             this.renderCohortLayout();
+            // Resolves only when the table is in sync, including syncs queued meanwhile.
             await this.syncStudentTable();
+            notifyStateRefreshed(this.element, this.getState());
         } catch (e) {
             Notification.exception(e);
             this.reactive.dispatch('setStale', true);
@@ -792,8 +833,11 @@ class MonitorComponent extends BaseComponent {
     /**
      * Return student rows from reactive state, sorted by the active column.
      *
+     * Rows without a value for the column sort last in both directions. Ties are broken
+     * by fullname A→Z, regardless of the sort direction.
+     *
      * Note: the sorting algorithm here mirrors the one in "sort_student_rows()".
-     * See "class/local/manager/monitor_manager.php".
+     * See "classes/local/manager/monitor_manager.php".
      *
      * @returns {Array}
      */
@@ -807,61 +851,166 @@ class MonitorComponent extends BaseComponent {
 
         const rows = students instanceof Map ? [...students.values()] : [...students];
 
-        const sortcolumn = state?.meta?.sortcolumn ?? 'status';
-        const sortdirection = state?.meta?.sortdirection ?? 'asc';
+        let sortcolumn = state?.meta?.sortcolumn ?? 'status';
+        const sortdirection = state?.meta?.sortdirection === 'desc' ? 'desc' : 'asc';
+        if (!SORT_FIELDS[sortcolumn] && !EXTENSION_COLUMN_PATTERN.test(sortcolumn)) {
+            sortcolumn = 'status';
+        }
 
-        const sortable = {
-            status: 'status',
-            fullname: 'fullname',
-            email: 'email',
-            progress: 'progresspercent',
-            timeremaining: 'timeremaining',
-        };
+        // Look up each row's sort key once instead of on every comparison.
+        const keys = new Map(rows.map((student) => [student, this.getSortKey(student, sortcolumn)]));
 
-        const field = sortable[sortcolumn] ?? 'status';
-
-        const statusRank = {
-            inprogress: 0,
-            idle: 1,
-            notstarted: 2,
-            completed: 3,
-        };
-
-        rows.sort((a, b) => {
+        return rows.sort((a, b) => {
+            const keya = keys.get(a);
+            const keyb = keys.get(b);
             let cmp;
 
-            if (field === 'status') {
-                cmp = (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
+            if (keya === null || keyb === null) {
+                // Rows without a value always sort last, in both directions.
+                cmp = Number(keya === null) - Number(keyb === null);
             } else {
-                const valuea = a[field] ?? null;
-                const valueb = b[field] ?? null;
-
-                if (valuea === valueb) {
-                    cmp = 0;
-                } else if (valuea === null) {
-                    cmp = 1;
-                } else if (valueb === null) {
-                    cmp = -1;
-                } else if (typeof valuea === 'number' && typeof valueb === 'number') {
-                    cmp = valuea - valueb;
+                if (keya.numeric && keyb.numeric) {
+                    cmp = Math.sign(Number(keya.value) - Number(keyb.value));
                 } else {
-                    cmp = String(valuea).localeCompare(String(valueb));
+                    cmp = String(keya.value).localeCompare(String(keyb.value));
+                }
+                if (sortdirection === 'desc') {
+                    cmp = -cmp;
                 }
             }
 
-            if (sortdirection === 'desc') {
-                cmp = -cmp;
-            }
-
             // Name tie-break stays A→Z regardless of sort direction.
-            if (cmp === 0) {
-                cmp = String(a.fullname ?? '').localeCompare(String(b.fullname ?? ''));
+            return cmp || String(a.fullname ?? '').localeCompare(String(b.fullname ?? ''));
+        });
+    }
+
+    /**
+     * Sort key of a student row for a column.
+     *
+     * @param {object} student Student state row
+     * @param {string} sortcolumn Built-in column or extension column id
+     * @returns {{value: (number|string), numeric: boolean}|null} Null if the row has no value
+     */
+    getSortKey(student, sortcolumn) {
+        if (sortcolumn === 'status') {
+            // Status sorts by its defined rank rather than alphabetically.
+            return {value: STATUS_SORT_RANK[student.status] ?? 99, numeric: true};
+        }
+
+        if (SORT_FIELDS[sortcolumn]) {
+            const value = student[SORT_FIELDS[sortcolumn]] ?? null;
+            return value === null ? null : {value, numeric: typeof value === 'number'};
+        }
+
+        const cell = (student.extensioncells ?? []).find((c) => c.column === sortcolumn);
+        return cell ? {value: cell.sortvalue, numeric: Boolean(cell.sortnumeric)} : null;
+    }
+
+    /**
+     * Extension column ids in header order.
+     *
+     * The header is rendered once on page load, so columns that appear later are ignored
+     * until the page is reloaded.
+     *
+     * @returns {string[]}
+     */
+    getExtensionColumnIds() {
+        const headers = this.element.querySelectorAll(`${this.selectors.STUDENTTABLE} thead th[data-column]`);
+        return [...headers]
+            .map((header) => header.dataset.column)
+            .filter((column) => EXTENSION_COLUMN_PATTERN.test(column));
+    }
+
+    /**
+     * Template context for a student's extension cells: one per header column, in header order.
+     *
+     * @param {object} student Student state row
+     * @returns {Array<{column: string, display: string}>}
+     */
+    buildExtensionCells(student) {
+        const displays = new Map((student.extensioncells ?? []).map((cell) => [cell.column, cell.display]));
+        return this.getExtensionColumnIds().map((column) => ({
+            column,
+            display: displays.get(column) ?? '',
+        }));
+    }
+
+    /**
+     * Template context for a student's extension row actions.
+     *
+     * @param {object} student Student state row
+     * @returns {{extensionactions: Array, hasextensionactions: boolean}}
+     */
+    buildExtensionActionsContext(student) {
+        const extensionactions = [...(student.extensionactions ?? [])];
+        return {
+            extensionactions,
+            hasextensionactions: extensionactions.length > 0,
+        };
+    }
+
+    /**
+     * Re-render the extension cells of a row whose value changed.
+     *
+     * Uses the same template as the server (extension_cell), so both look the same.
+     *
+     * @param {HTMLElement} row Table row element
+     * @param {object} student Student state row
+     * @returns {Promise<void>}
+     */
+    async renderExtensionCells(row, student) {
+        for (const cell of this.buildExtensionCells(student)) {
+            const fingerprint = JSON.stringify(cell);
+            const current = row.querySelector(`[data-extension-cell="${cell.column}"]`);
+            if (current && current.dataset.extensionFingerprint === fingerprint) {
+                continue;
             }
 
-            return cmp;
-        });
+            const {html, js} = await Templates.renderForPromise('quiz_livequizmonitor/extension_cell', cell);
+            const template = document.createElement('template');
+            template.innerHTML = html.trim();
+            const replacement = template.content.querySelector('td');
+            if (!replacement) {
+                continue;
+            }
+            replacement.dataset.extensionFingerprint = fingerprint;
 
-        return rows;
+            if (current) {
+                current.replaceWith(replacement);
+            } else {
+                row.insertBefore(replacement, row.querySelector('[data-column="actions"]'));
+            }
+            if (js) {
+                Templates.runTemplateJS(js);
+            }
+        }
+    }
+
+    /**
+     * Re-render the extension actions of a row's menu when they changed.
+     *
+     * Uses the same template as the server (extension_actions) and leaves the rest of the
+     * menu untouched, so an open menu stays open.
+     *
+     * @param {HTMLElement} row Table row element
+     * @param {object} student Student state row
+     * @returns {Promise<void>}
+     */
+    async renderExtensionActions(row, student) {
+        const container = row.querySelector('[data-region="extension-actions"]');
+        if (!container) {
+            return;
+        }
+
+        const context = this.buildExtensionActionsContext(student);
+        const fingerprint = JSON.stringify(context);
+        if (container.dataset.extensionFingerprint === fingerprint) {
+            return;
+        }
+
+        const {html, js} = await Templates.renderForPromise('quiz_livequizmonitor/extension_actions', context);
+        Templates.replaceNodeContents(container, html, js);
+        container.dataset.extensionFingerprint = fingerprint;
     }
 
     /**
@@ -941,6 +1090,9 @@ class MonitorComponent extends BaseComponent {
             canviewlogs: this.canviewlogs,
             actionsmenulabel: this.actionsMenuLabel,
             canviewattempts: this.canviewattempts,
+            highlight: student.highlight ?? '',
+            extensioncells: this.buildExtensionCells(student),
+            ...this.buildExtensionActionsContext(student),
         };
     }
 
@@ -985,6 +1137,20 @@ class MonitorComponent extends BaseComponent {
             tbody.insertBefore(row, rows[insertIndex]);
         }
 
+        // The row was rendered from the current data, so later syncs only re-render changes.
+        this.buildExtensionCells(student).forEach((cell) => {
+            const element = row.querySelector(`[data-extension-cell="${cell.column}"]`);
+            if (element) {
+                element.dataset.extensionFingerprint = JSON.stringify(cell);
+            }
+        });
+        const actions = row.querySelector('[data-region="extension-actions"]');
+        if (actions) {
+            actions.dataset.extensionFingerprint = JSON.stringify(this.buildExtensionActionsContext(student));
+        }
+        row.dataset.rowFingerprint = JSON.stringify(student);
+        notifyRowRendered(this.element, row, student);
+
         return row;
     }
 
@@ -1017,12 +1183,24 @@ class MonitorComponent extends BaseComponent {
      *
      * @returns {Promise<void>}
      */
-    async syncStudentTable() {
+    syncStudentTable() {
         if (this.syncInFlight) {
+            // The running sync picks this up in its finally block, and its promise
+            // only resolves after that queued run.
             this.syncQueued = true;
-            return;
+            return this.syncPromise;
         }
         this.syncInFlight = true;
+        this.syncPromise = this.runStudentTableSync();
+        return this.syncPromise;
+    }
+
+    /**
+     * Perform one table sync, then any sync that was queued while it ran.
+     *
+     * @returns {Promise<void>}
+     */
+    async runStudentTableSync() {
         try {
             this.updateColumnFlags();
             const students = this.getStudentRows();
@@ -1059,7 +1237,7 @@ class MonitorComponent extends BaseComponent {
                             tbody.appendChild(row);
                         }
                     }
-                    this.updateStudentRow(row, student);
+                    await this.updateStudentRow(row, student);
                 }
             }
 
@@ -1067,10 +1245,11 @@ class MonitorComponent extends BaseComponent {
             this.renderFilterEmpty();
             this.renderColumnVisibility();
         } finally {
-            this.syncInFlight = false;
             if (this.syncQueued) {
                 this.syncQueued = false;
-                await this.syncStudentTable();
+                await this.runStudentTableSync();
+            } else {
+                this.syncInFlight = false;
             }
         }
     }
@@ -1081,7 +1260,7 @@ class MonitorComponent extends BaseComponent {
      * @param {HTMLElement} row Table row element
      * @param {object} student Student state row
      */
-    updateStudentRow(row, student) {
+    async updateStudentRow(row, student) {
         const badge = row.querySelector(this.selectors.STATUSBADGE);
         if (badge) {
             badge.textContent = student.statuslabel;
@@ -1123,6 +1302,18 @@ class MonitorComponent extends BaseComponent {
         this.updateTimeOverrideFlag(row, student);
         this.updateNoteFlag(row, student);
         this.renderRowActions(student, row);
+
+        // Parts added by other plugins.
+        row.dataset.highlight = student.highlight ?? '';
+        await this.renderExtensionCells(row, student);
+        await this.renderExtensionActions(row, student);
+
+        // Only tell plugin scripts about rows whose data changed.
+        const fingerprint = JSON.stringify(student);
+        if (row.dataset.rowFingerprint !== fingerprint) {
+            row.dataset.rowFingerprint = fingerprint;
+            notifyRowRendered(this.element, row, student);
+        }
     }
 
     /**
@@ -1400,6 +1591,7 @@ class MonitorComponent extends BaseComponent {
                             <i class="fa-solid fa-book" aria-hidden="true"></i>
                             <span class="menu-action-text">${notelabel}</span>
                         </a>${extendItem}${unblockItem}${attemptsItem}${logsItem}
+                        <div data-region="extension-actions"></div>
                     </div>
                 </div>${flagHtml}
             </div>
@@ -1696,7 +1888,13 @@ class MonitorComponent extends BaseComponent {
             if (!unblockLink) {
                 const menu = inner.querySelector('.dropdown-menu');
                 if (menu) {
-                    menu.insertAdjacentHTML('beforeend', this.buildUnblockMenuItemHtml(student));
+                    // Built-in entries stay above the entries added by other plugins.
+                    const extensions = menu.querySelector('[data-region="extension-actions"]');
+                    if (extensions) {
+                        extensions.insertAdjacentHTML('beforebegin', this.buildUnblockMenuItemHtml(student));
+                    } else {
+                        menu.insertAdjacentHTML('beforeend', this.buildUnblockMenuItemHtml(student));
+                    }
                     unblockLink = inner.querySelector('[data-action="unblock-student"]');
                 }
             }
@@ -1766,6 +1964,7 @@ export const init = (selector) => {
     }
 
     const reactive = createMonitorReactive(root);
+    resolveReactive(reactive);
     const cmid = root.dataset.cmid;
     const groupid = root.dataset.groupid || 0;
 
@@ -1777,4 +1976,13 @@ export const init = (selector) => {
     });
 };
 
-export default {init};
+/**
+ * Access the monitor's reactive instance, e.g. to register watchers from another plugin.
+ *
+ * The state is read-only for other plugins; they must not dispatch the monitor's mutations.
+ *
+ * @returns {Promise<Reactive>} Resolves once the monitor has been initialised.
+ */
+export const getReactive = () => reactivePromise;
+
+export default {init, getReactive};

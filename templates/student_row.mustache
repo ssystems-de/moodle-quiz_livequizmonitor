@@ -39,13 +39,17 @@
         "showlogslabel": "Show logs",
         "attemptendat": 1700000000,
         "onesessionactive": false,
+        "highlight": "warning",
+        "extensioncells": [{"column": "local_sebstatus-battery", "display": "85 %"}],
+        "hasextensionactions": false,
+        "extensionactions": [],
         "_mustache_lint_wrapper": true
     }
 }}
 {{#_mustache_lint_wrapper}}
 <table class="visually-hidden" aria-hidden="true"><tbody>
 {{/_mustache_lint_wrapper}}
-<tr data-userid="{{userid}}">
+<tr data-userid="{{userid}}" data-highlight="{{highlight}}">
     <td data-column="status">
         <span class="badge {{statusclass}}">{{statuslabel}}</span>
     </td>
@@ -100,6 +104,9 @@
            aria-label="{{timeoverrideflaglabel}}"></i>
         {{/hastimeoverride}}
     </td>
+    {{#extensioncells}}
+    {{> quiz_livequizmonitor/extension_cell }}
+    {{/extensioncells}}
     {{#showactionscolumn}}
     <td class="livequizmonitor-actions" data-column="actions" data-field="actions">
         <div class="livequizmonitor-actions-inner">
