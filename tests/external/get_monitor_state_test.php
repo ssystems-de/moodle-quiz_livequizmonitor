@@ -298,4 +298,50 @@ final class get_monitor_state_test extends advanced_testcase {
         $this->assertTrue($bystudent[$student2->id]['hasgrouptimeoverride']);
         $this->assertTrue($bystudent[$student2->id]['hastimeoverride']);
     }
+
+    /**
+     * Extension data from other plugins is part of the poll payload, and rows can be sorted by it.
+     */
+    public function test_execute_includes_extension_data(): void {
+        $this->resetAfterTest();
+        require_once(__DIR__ . '/../fixtures/extension_callbacks.php');
+        \quiz_livequizmonitor\tests\fixtures\extension_callbacks::reset();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([
+            'quiz_livequizmonitor' => __DIR__ . '/../fixtures/extension_hooks.php',
+        ]));
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $first = $generator->create_and_enrol($course, 'student', ['firstname' => 'Anna']);
+        $second = $generator->create_and_enrol($course, 'student', ['firstname' => 'Bert']);
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+        $quiz = $generator->get_plugin_generator('mod_quiz')->create_instance(['course' => $course->id]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        \quiz_livequizmonitor\tests\fixtures\extension_callbacks::$config['quiz_livequizmonitor'] = [
+            'columns' => [['fixture', 'Fixture', false]],
+            'values' => [['fixture', (int) $first->id, 'two', 2, false], ['fixture', (int) $second->id, 'one', 1, false]],
+            'highlights' => [[(int) $first->id, 'warning']],
+            'actions' => [[(int) $first->id, 'Fixture action', '/user/profile.php', true, true]],
+        ];
+
+        $this->setUser($teacher);
+        $result = get_monitor_state::execute($cm->id, 0, 'quiz_livequizmonitor-fixture', 'asc');
+        $result = \core_external\external_api::clean_returnvalue(get_monitor_state::execute_returns(), $result);
+
+        $this->assertSame('quiz_livequizmonitor-fixture', $result['sortcolumn']);
+        $this->assertSame(
+            [['id' => 'quiz_livequizmonitor-fixture', 'label' => 'Fixture', 'defaulthidden' => false]],
+            $result['extensioncolumns']
+        );
+        $this->assertSame([(int) $second->id, (int) $first->id], array_column($result['students'], 'userid'));
+
+        $row = $result['students'][1];
+        $this->assertSame('two', $row['extensioncells'][0]['display']);
+        $this->assertTrue($row['extensioncells'][0]['sortnumeric']);
+        $this->assertSame('warning', $row['highlight']);
+        $this->assertSame('Fixture action', $row['extensionactions'][0]['label']);
+        $this->assertSame('', $result['students'][0]['highlight']);
+        $this->assertSame([], $result['students'][0]['extensionactions']);
+    }
 }

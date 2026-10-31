@@ -243,4 +243,47 @@ final class monitor_report_test extends advanced_testcase {
         $this->assertSame('fa-arrow-down-short-wide', $columns['student']['sorticon']);
         $this->assertFalse($columns['actions']['sortable']);
     }
+
+    /**
+     * Extension columns go before actions; every row gets one cell per extension column.
+     */
+    public function test_export_extension_columns_cells_and_actions(): void {
+        $this->resetAfterTest();
+        $state = $this->get_state_with_students();
+        $state->extensioncolumns = [
+            ['id' => 'local_sebstatus-battery', 'label' => 'Battery', 'defaulthidden' => false],
+            ['id' => 'local_sebstatus-wifi', 'label' => 'Wi-Fi', 'defaulthidden' => true],
+        ];
+        $first = $state->students[0];
+        $first->extensioncells = [
+            ['column' => 'local_sebstatus-wifi', 'display' => 'weak', 'sortvalue' => 'weak', 'sortnumeric' => false],
+        ];
+        $first->highlight = 'danger';
+        $first->extensionactions = [
+            ['label' => 'Log', 'url' => 'https://example.com', 'iconkey' => '', 'iconcomponent' => '', 'newtab' => false],
+        ];
+
+        $context = $this->export($state);
+
+        $ids = array_column($context['columns'], 'id');
+        $this->assertSame(['local_sebstatus-battery', 'local_sebstatus-wifi', 'actions'], array_slice($ids, -3));
+        $battery = $context['columns'][count($ids) - 3];
+        $this->assertTrue($battery['sortable']);
+        $this->assertFalse($battery['locked']);
+        $this->assertSame('local_sebstatus-battery', $battery['sortcolumn']);
+        $this->assertSame('Battery', $battery['label']);
+
+        $student = $context['students'][0];
+        $this->assertSame([
+            ['column' => 'local_sebstatus-battery', 'display' => ''],
+            ['column' => 'local_sebstatus-wifi', 'display' => 'weak'],
+        ], $student['extensioncells']);
+        $this->assertSame('danger', $student['highlight']);
+        $this->assertTrue($student['hasextensionactions']);
+        $this->assertFalse($context['students'][1]['hasextensionactions']);
+        $this->assertCount(2, $context['students'][1]['extensioncells']);
+
+        $this->assertContains('local_sebstatus-wifi', json_decode($context['hiddencolumnsjson']));
+        $this->assertNotContains('local_sebstatus-battery', json_decode($context['hiddencolumnsjson']));
+    }
 }

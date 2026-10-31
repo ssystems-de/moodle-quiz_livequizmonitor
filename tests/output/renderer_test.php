@@ -25,7 +25,9 @@
 namespace quiz_livequizmonitor\output;
 
 use advanced_testcase;
+use quiz_livequizmonitor\hook\before_monitor_page_render;
 use quiz_livequizmonitor\local\manager\monitor_manager;
+use quiz_livequizmonitor\tests\fixtures\extension_callbacks;
 
 /**
  * Tests that the monitor page is rendered through the (theme overridable) plugin renderer.
@@ -96,5 +98,66 @@ final class renderer_test extends advanced_testcase {
 
         $this->assertInstanceOf(\theme_boost\output\quiz_livequizmonitor_renderer::class, $renderer);
         $this->assertSame(\theme_boost\output\quiz_livequizmonitor_renderer::MARKER, $renderer->render($report));
+    }
+
+    /**
+     * The page hook is dispatched once, gets the page data and cannot change the rendered state.
+     */
+    public function test_page_hook_is_dispatched_once(): void {
+        global $PAGE;
+        $this->resetAfterTest();
+        require_once(__DIR__ . '/../fixtures/extension_callbacks.php');
+        extension_callbacks::reset();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([
+            'quiz_livequizmonitor' => __DIR__ . '/../fixtures/extension_hooks.php',
+        ]));
+
+        [$report, $cmid] = $this->create_report();
+        $received = [];
+        extension_callbacks::$pagecallback = static function (before_monitor_page_render $hook) use (&$received): void {
+            $received = [
+                'cmid' => $hook->get_cm()->id,
+                'quizid' => (int) $hook->get_quiz()->id,
+                'groupid' => $hook->get_groupid(),
+                'page' => $hook->get_page(),
+            ];
+            $hook->get_state()->quizname = 'Changed by plugin';
+        };
+
+        $html = $PAGE->get_renderer('quiz_livequizmonitor')->render($report);
+
+        $this->assertCount(1, extension_callbacks::$calls[before_monitor_page_render::class]);
+        $this->assertEquals($cmid, $received['cmid']);
+        $this->assertSame((int) $report->get_state()->quizid, $received['quizid']);
+        $this->assertSame(0, $received['groupid']);
+        $this->assertSame($PAGE, $received['page']);
+        $this->assertStringContainsString('Renderer quiz', $html);
+        $this->assertStringNotContainsString('Changed by plugin', $html);
+    }
+
+    /**
+     * A failing page callback does not break the page.
+     *
+     * No test for the "not in group" notice: report.php returns before the renderer is called,
+     * so the hook cannot be dispatched there.
+     */
+    public function test_failing_page_hook_does_not_break_rendering(): void {
+        global $PAGE;
+        $this->resetAfterTest();
+        require_once(__DIR__ . '/../fixtures/extension_callbacks.php');
+        extension_callbacks::reset();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([
+            'quiz_livequizmonitor' => __DIR__ . '/../fixtures/extension_hooks.php',
+        ]));
+
+        [$report] = $this->create_report();
+        extension_callbacks::$pagecallback = static function (): void {
+            throw new \coding_exception('Broken plugin');
+        };
+
+        $html = $PAGE->get_renderer('quiz_livequizmonitor')->render($report);
+
+        $this->assertDebuggingCalled();
+        $this->assertStringContainsString('data-region="live-quiz-monitor"', $html);
     }
 }

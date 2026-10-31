@@ -35,6 +35,8 @@ use core_user\fields;
 use mod_quiz\access_manager;
 use mod_quiz\quiz_attempt;
 use mod_quiz\quiz_settings;
+use quiz_livequizmonitor\local\column_helper;
+use quiz_livequizmonitor\local\extension\extension_dispatcher;
 use stdClass;
 
 /**
@@ -123,6 +125,7 @@ class monitor_manager {
      * @param int $groupid Requested group id (resolved via supervision_scope_manager::resolve_group()).
      * @param string $sortcolumn Column to sort by.
      * @param string $sortdirection Sort direction ('asc' or 'desc').
+     * @param bool $withextensions Whether to dispatch the extension hooks; false for callers that do not display the state.
      * @return stdClass MonitorState payload.
      */
     public static function get_state(
@@ -131,7 +134,8 @@ class monitor_manager {
         stdClass $quiz,
         int $groupid = 0,
         string $sortcolumn = 'status',
-        string $sortdirection = 'asc'
+        string $sortdirection = 'asc',
+        bool $withextensions = true
     ): stdClass {
         global $DB;
 
@@ -204,6 +208,19 @@ class monitor_manager {
                 $showemail,
                 $canextend
             );
+        }
+
+        // Let other plugins add columns, row highlights and row actions. This runs before the
+        // sort, so rows can be sorted by extension columns like by built-in ones.
+        $extensioncolumns = [];
+        if ($withextensions) {
+            $extensions = extension_dispatcher::apply_row_hooks($course, $cm, $quiz, $groupid, $rows);
+            $extensioncolumns = $extensions->columns;
+            foreach ($rows as $row) {
+                $row->extensioncells = $extensions->cells[$row->userid] ?? [];
+                $row->highlight = $extensions->highlights[$row->userid] ?? '';
+                $row->extensionactions = $extensions->actions[$row->userid] ?? [];
+            }
         }
 
         self::sort_student_rows($rows, $sortcolumn, $sortdirection);
@@ -311,6 +328,7 @@ class monitor_manager {
             'nooverridecount' => $nooverridecount,
             'useroverridecount' => $useroverridecount,
             'groupoverridecount' => $groupoverridecount,
+            'extensioncolumns' => $extensioncolumns,
         ];
 
         return $state;
@@ -701,6 +719,9 @@ class monitor_manager {
             'hastimeoverride' => false,
             'isblocked' => false,
             'unblockactionenabled' => false,
+            'extensioncells' => [],
+            'highlight' => '',
+            'extensionactions' => [],
         ];
     }
 
@@ -773,8 +794,12 @@ class monitor_manager {
         ];
 
         // Sanity check on incoming values.
-        $sortcolumn = $sortable[$sortcolumn] ?? 'status';
         $sortdirection = $sortdirection === 'desc' ? 'desc' : 'asc';
+        if (!isset($sortable[$sortcolumn]) && column_helper::is_extension_column_id($sortcolumn)) {
+            self::sort_rows_by_extension_column($rows, $sortcolumn, $sortdirection);
+            return;
+        }
+        $sortcolumn = $sortable[$sortcolumn] ?? 'status';
 
         $rank = [
             self::STATUS_INPROGRESS => 0,
@@ -822,6 +847,55 @@ class monitor_manager {
             }
 
             return $cmp;
+        });
+    }
+
+    /**
+     * Sort rows by an extension column.
+     *
+     * Note: the sorting algorithm here mirrors the extension column branch of "getStudentRows()".
+     * See "amd/src/monitor.js".
+     *
+     * @param array $rows Student rows (by reference).
+     * @param string $columnid Extension column id.
+     * @param string $sortdirection Sort direction: asc or desc.
+     */
+    protected static function sort_rows_by_extension_column(array &$rows, string $columnid, string $sortdirection): void {
+        // Look up each row's cell once instead of on every comparison.
+        $cells = [];
+        foreach ($rows as $row) {
+            foreach ($row->extensioncells ?? [] as $cell) {
+                if ($cell['column'] === $columnid) {
+                    $cells[$row->userid] = $cell;
+                    break;
+                }
+            }
+        }
+
+        usort($rows, static function (stdClass $a, stdClass $b) use ($cells, $sortdirection): int {
+            $cella = $cells[$a->userid] ?? null;
+            $cellb = $cells[$b->userid] ?? null;
+
+            // Rows without a value always sort last, in both directions.
+            if ($cella === null || $cellb === null) {
+                $cmp = ($cella === null ? 1 : 0) - ($cellb === null ? 1 : 0);
+                return $cmp ?: strcmp($a->fullname, $b->fullname);
+            }
+
+            if ($cella['sortnumeric'] && $cellb['sortnumeric']) {
+                $cmp = (float) $cella['sortvalue'] <=> (float) $cellb['sortvalue'];
+            } else {
+                $cmp = strcmp($cella['sortvalue'], $cellb['sortvalue']);
+            }
+            // Normalise strcmp() results, so negating them is safe.
+            $cmp = $cmp <=> 0;
+
+            if ($sortdirection === 'desc') {
+                $cmp = -$cmp;
+            }
+
+            // Name tie-break stays A→Z regardless of sort direction.
+            return $cmp ?: strcmp($a->fullname, $b->fullname);
         });
     }
 

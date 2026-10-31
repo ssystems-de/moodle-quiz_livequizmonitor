@@ -28,14 +28,23 @@ namespace quiz_livequizmonitor\local;
  * Defines the monitor table's known columns, and reads/writes the per-user
  * hide/show preference for them.
  *
- * This class is deliberately the single place that knows the set of columns.
+ * This class is deliberately the single place that knows the set of built-in columns.
  * Everything else (renderer, templates, JS, external API) works generically
  * off {@see self::get_columns()} and the persisted preference, so adding a
  * new column later only means adding one entry here (plus its markup).
+ *
+ * Other plugins add extension columns via the \quiz_livequizmonitor\hook\extend_columns hook.
+ * Their ids ("<component>-<name>") are only known per request, so they are passed in where needed.
  */
 class column_helper {
     /** @var string Name of the user preference that stores hidden column ids. */
     const PREFERENCE_NAME = 'quiz_livequizmonitor_hiddencolumns';
+
+    /** @var string Name of the user preference that stores default-hidden extension columns the user showed. */
+    const SHOWN_PREFERENCE_NAME = 'quiz_livequizmonitor_showncolumns';
+
+    /** @var string Pattern of extension column ids: "<component>-<name>". */
+    const EXTENSION_COLUMN_PATTERN = '/^[a-z][a-z0-9_]*-[a-z0-9]+$/';
 
     /**
      * Ordered registry of columns known to the monitor table.
@@ -78,47 +87,105 @@ class column_helper {
     }
 
     /**
-     * Read the current user's hidden-column preference.
+     * Whether the id has the format of an extension column id ("<component>-<name>").
+     *
+     * @param string $columnid Column id.
+     * @return bool
+     */
+    public static function is_extension_column_id(string $columnid): bool {
+        return (bool) preg_match(self::EXTENSION_COLUMN_PATTERN, $columnid);
+    }
+
+    /**
+     * Read the current user's effective set of hidden columns.
      *
      * Unknown or locked column ids are filtered out, so a stale preference
-     * (e.g. left over from a since-removed column) never leaks through.
+     * (e.g. left over from a since-removed column, or an extension column of an
+     * uninstalled plugin) never leaks through. Extension columns that are hidden by
+     * default stay hidden until the user shows them.
      *
      * @param int $userid User id, defaults to the current user.
+     * @param array[] $extensioncolumns Extension columns of this request (['id', 'label', 'defaulthidden']).
      * @return string[] Hidden column ids.
      */
-    public static function get_hidden_columns(int $userid = 0): array {
-        global $USER;
+    public static function get_hidden_columns(int $userid = 0, array $extensioncolumns = []): array {
+        $extensionids = array_column($extensioncolumns, 'id');
+        $allowed = array_merge(self::get_toggleable_column_ids(), $extensionids);
 
-        $userid = $userid ?: (int) $USER->id;
-        $raw = get_user_preferences(self::PREFERENCE_NAME, '', $userid);
-        $hidden = $raw !== '' ? json_decode($raw, true) : [];
-        if (!is_array($hidden)) {
-            $hidden = [];
+        $hidden = array_filter(
+            self::read_preference(self::PREFERENCE_NAME, $userid),
+            static fn($columnid): bool => in_array($columnid, $allowed, true)
+        );
+
+        $shown = self::get_shown_columns($userid);
+        foreach ($extensioncolumns as $column) {
+            if (!empty($column['defaulthidden']) && !in_array($column['id'], $shown, true)) {
+                $hidden[] = $column['id'];
+            }
         }
 
-        return self::filter_valid_columns($hidden);
+        return array_values(array_unique($hidden));
+    }
+
+    /**
+     * Read the default-hidden extension columns the user has explicitly shown.
+     *
+     * @param int $userid User id, defaults to the current user.
+     * @return string[] Column ids.
+     */
+    public static function get_shown_columns(int $userid = 0): array {
+        return array_values(array_filter(
+            self::read_preference(self::SHOWN_PREFERENCE_NAME, $userid),
+            static fn($columnid): bool => is_string($columnid) && self::is_extension_column_id($columnid)
+        ));
     }
 
     /**
      * Persist the current user's hidden-column preference.
      *
+     * Extension column ids are accepted by format only; ids of columns that no longer
+     * exist are dropped when the preference is read.
+     *
      * @param string[] $hidden Column ids to hide.
      * @param int $userid User id, defaults to the current user.
+     * @param string[] $shown Default-hidden extension columns the user has shown.
      * @return string[] The saved (validated) hidden column ids.
      */
-    public static function set_hidden_columns(array $hidden, int $userid = 0): array {
+    public static function set_hidden_columns(array $hidden, int $userid = 0, array $shown = []): array {
         global $USER;
 
         $userid = $userid ?: (int) $USER->id;
         $hidden = self::filter_valid_columns($hidden);
+        $shown = array_values(array_unique(array_filter(
+            $shown,
+            static fn($columnid): bool => is_string($columnid) && self::is_extension_column_id($columnid)
+        )));
 
         set_user_preference(self::PREFERENCE_NAME, json_encode(array_values($hidden)), $userid);
+        set_user_preference(self::SHOWN_PREFERENCE_NAME, json_encode($shown), $userid);
 
         return $hidden;
     }
 
     /**
-     * Keep only column ids that exist and are not locked.
+     * Read a JSON list preference.
+     *
+     * @param string $name Preference name.
+     * @param int $userid User id, defaults to the current user.
+     * @return array Decoded list, [] if unset or invalid.
+     */
+    protected static function read_preference(string $name, int $userid = 0): array {
+        global $USER;
+
+        $userid = $userid ?: (int) $USER->id;
+        $raw = get_user_preferences($name, '', $userid);
+        $values = $raw !== '' ? json_decode($raw, true) : [];
+
+        return is_array($values) ? $values : [];
+    }
+
+    /**
+     * Keep only column ids that are toggleable built-in columns or extension column ids.
      *
      * @param array $columnids Candidate column ids.
      * @return string[]
@@ -127,7 +194,8 @@ class column_helper {
         $toggleable = self::get_toggleable_column_ids();
 
         $valid = array_filter($columnids, function ($columnid) use ($toggleable): bool {
-            return is_string($columnid) && in_array($columnid, $toggleable, true);
+            return is_string($columnid)
+                && (in_array($columnid, $toggleable, true) || self::is_extension_column_id($columnid));
         });
 
         return array_values(array_unique($valid));

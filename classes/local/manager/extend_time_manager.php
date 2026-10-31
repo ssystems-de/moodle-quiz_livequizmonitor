@@ -157,7 +157,8 @@ class extend_time_manager {
         stdClass $quiz,
         int $groupid
     ): array {
-        $state = monitor_manager::get_state($course, $cm, $quiz, $groupid);
+        // Only statuses are needed here, so skip the extension hooks of other plugins.
+        $state = monitor_manager::get_state($course, $cm, $quiz, $groupid, 'status', 'asc', false);
         $extendablestatus = [
             monitor_manager::STATUS_INPROGRESS,
             monitor_manager::STATUS_IDLE,

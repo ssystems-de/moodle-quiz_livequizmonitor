@@ -1,0 +1,39 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template quiz_livequizmonitor/extension_cell
+
+    Cell of a column added by another plugin (hook quiz_livequizmonitor\hook\extend_columns).
+    Rendered inside student_row on page load and by the browser when the value changes.
+    The display value is cleaned on the server.
+
+    Example context (json):
+    {
+        "column": "local_sebstatus-battery",
+        "display": "85 %",
+        "_extension_cell_lint_wrapper": true
+    }
+}}
+{{#_extension_cell_lint_wrapper}}
+<table class="visually-hidden" aria-hidden="true"><tbody><tr>
+{{/_extension_cell_lint_wrapper}}
+<td data-column="{{column}}" data-extension-cell="{{column}}">
+    <div data-colcontent="{{column}}">{{{display}}}</div>
+</td>
+{{#_extension_cell_lint_wrapper}}
+</tr></tbody></table>
+{{/_extension_cell_lint_wrapper}}

@@ -46,7 +46,7 @@ class get_monitor_state extends external_api {
         return new external_function_parameters([
             'cmid' => new external_value(PARAM_INT, 'Course module id of the quiz'),
             'groupid' => new external_value(PARAM_INT, 'Group id filter', VALUE_DEFAULT, 0),
-            'sortcolumn' => new external_value(PARAM_ALPHANUM, 'Sort column name', VALUE_DEFAULT, 'status'),
+            'sortcolumn' => new external_value(PARAM_ALPHANUMEXT, 'Sort column name', VALUE_DEFAULT, 'status'),
             'sortdirection' => new external_value(PARAM_ALPHA, 'Sort direction', VALUE_DEFAULT, 'asc'),
         ]);
     }
@@ -149,6 +149,26 @@ class get_monitor_state extends external_api {
             'timeoverrideflaglabel' => new external_value(PARAM_TEXT, 'Tooltip for the time override badge'),
             'isblocked' => new external_value(PARAM_BOOL, 'Student blocked by onesession'),
             'unblockactionenabled' => new external_value(PARAM_BOOL, 'Unblock action enabled for viewer'),
+            'extensioncells' => new external_multiple_structure(
+                new external_single_structure([
+                    'column' => new external_value(PARAM_ALPHANUMEXT, 'Extension column id'),
+                    'display' => new external_value(PARAM_RAW, 'Cleaned HTML to display'),
+                    'sortvalue' => new external_value(PARAM_RAW, 'Value to sort by'),
+                    'sortnumeric' => new external_value(PARAM_BOOL, 'Whether the sort value is numeric'),
+                ]),
+                'Values of extension columns'
+            ),
+            'highlight' => new external_value(PARAM_ALPHA, 'Row highlight: empty, info, warning or danger'),
+            'extensionactions' => new external_multiple_structure(
+                new external_single_structure([
+                    'label' => new external_value(PARAM_TEXT, 'Link text'),
+                    'url' => new external_value(PARAM_URL, 'Link target'),
+                    'iconkey' => new external_value(PARAM_RAW, 'Pix icon key, empty for none'),
+                    'iconcomponent' => new external_value(PARAM_COMPONENT, 'Pix icon component, empty for none'),
+                    'newtab' => new external_value(PARAM_BOOL, 'Open in a new tab'),
+                ]),
+                'Row actions added by other plugins'
+            ),
         ]);
 
         return new external_single_structure([
@@ -177,7 +197,15 @@ class get_monitor_state extends external_api {
                 'completed' => $statuscount,
             ]),
             'students' => new external_multiple_structure($student),
-            'sortcolumn' => new external_value(PARAM_ALPHANUM, 'Sort column'),
+            'extensioncolumns' => new external_multiple_structure(
+                new external_single_structure([
+                    'id' => new external_value(PARAM_ALPHANUMEXT, 'Extension column id'),
+                    'label' => new external_value(PARAM_TEXT, 'Column header'),
+                    'defaulthidden' => new external_value(PARAM_BOOL, 'Hidden until the user shows it'),
+                ]),
+                'Columns added by other plugins'
+            ),
+            'sortcolumn' => new external_value(PARAM_ALPHANUMEXT, 'Sort column'),
             'sortdirection' => new external_value(PARAM_ALPHA, 'Sort direction'),
         ]);
     }
@@ -219,6 +247,9 @@ class get_monitor_state extends external_api {
                 'timeoverrideflaglabel' => (string) ($row->timeoverrideflaglabel ?? ''),
                 'isblocked' => (bool) ($row->isblocked ?? false),
                 'unblockactionenabled' => (bool) ($row->unblockactionenabled ?? false),
+                'extensioncells' => $row->extensioncells ?? [],
+                'highlight' => (string) ($row->highlight ?? ''),
+                'extensionactions' => $row->extensionactions ?? [],
             ];
             if ($row->attemptid !== null) {
                 $entry['attemptid'] = $row->attemptid;
@@ -259,6 +290,7 @@ class get_monitor_state extends external_api {
                 'completed' => (array) $summary->completed,
             ],
             'students' => $students,
+            'extensioncolumns' => $state->extensioncolumns ?? [],
             'sortcolumn' => $state->sortcolumn,
             'sortdirection' => $state->sortdirection,
         ];
