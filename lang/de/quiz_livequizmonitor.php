@@ -68,6 +68,7 @@ $string['invalidscope'] = 'Ungültiger Verlängerungsumfang.';
 $string['lastupdated'] = 'Zuletzt aktualisiert: {$a}';
 $string['liveindicator'] = 'Live';
 $string['livequizmonitor'] = 'Live-Monitor';
+$string['livequizmonitor:managenotes'] = 'Aufsichtsnotizen im Live-Quiz-Monitor anlegen, bearbeiten und löschen';
 $string['livequizmonitor:view'] = 'Live-Quiz-Monitor-Bericht anzeigen';
 $string['livequizmonitorreport'] = 'Live-Monitor';
 $string['logs:showlabel'] = 'Logs anzeigen';

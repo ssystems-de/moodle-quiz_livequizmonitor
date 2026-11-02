@@ -36,4 +36,15 @@ $capabilities = [
         'clonepermissionsfrom' => 'mod/quiz:viewreports',
         'riskbitmask' => RISK_PERSONAL,
     ],
+    'quiz/livequizmonitor:managenotes' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+        'clonepermissionsfrom' => 'quiz/livequizmonitor:view',
+        'riskbitmask' => RISK_PERSONAL,
+    ],
 ];

@@ -63,7 +63,7 @@ $functions = [
         'type' => 'write',
         'ajax' => true,
         'loginrequired' => true,
-        'capabilities' => 'quiz/livequizmonitor:view',
+        'capabilities' => 'quiz/livequizmonitor:view, quiz/livequizmonitor:managenotes',
     ],
     'quiz_livequizmonitor_unblock_student' => [
         'classname' => 'quiz_livequizmonitor\\external\\unblock_student',

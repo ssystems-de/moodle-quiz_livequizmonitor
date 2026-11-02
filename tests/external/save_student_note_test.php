@@ -123,6 +123,35 @@ final class save_student_note_test extends advanced_testcase {
     }
 
     /**
+     * Monitor viewers without the managenotes capability cannot write notes.
+     */
+    public function test_execute_denies_without_managenotes_capability(): void {
+        $this->resetAfterTest();
+
+        [$teacher, $student, $cm, $quiz] = $this->create_monitor_fixture();
+        student_note_manager::save_note((int) $quiz->id, (int) $student->id, (int) $teacher->id, 'Keep me');
+
+        $roleid = (int) $this->getDataGenerator()->create_role();
+        $context = \context_module::instance($cm->id);
+        assign_capability('quiz/livequizmonitor:view', CAP_ALLOW, $roleid, $context->id);
+        $viewer = $this->getDataGenerator()->create_and_enrol(get_course($cm->course), 'student');
+        role_assign($roleid, $viewer->id, $context->id);
+
+        $this->setUser($viewer);
+        try {
+            save_student_note::execute($cm->id, 0, $student->id, '');
+            $this->fail('Expected required_capability_exception');
+        } catch (required_capability_exception $e) {
+            $this->assertStringContainsString(
+                get_string('livequizmonitor:managenotes', 'quiz_livequizmonitor'),
+                $e->getMessage()
+            );
+        }
+
+        $this->assertSame('Keep me', student_note_manager::get_note((int) $quiz->id, (int) $student->id)->content);
+    }
+
+    /**
      * Teacher restricted to Group A cannot overwrite or delete a Group B note via a foreign group id.
      */
     public function test_execute_rejects_foreign_group(): void {

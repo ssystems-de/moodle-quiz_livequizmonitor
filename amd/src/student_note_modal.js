@@ -101,6 +101,7 @@ export const showStudentNoteModal = async(config) => {
         modalbody: strings.modalbody,
         content: noteData.content ?? '',
         textareaaria: modaltitle,
+        canmanage: !!noteData.canmanage,
     };
 
     const {html, js} = await Templates.renderForPromise(
@@ -114,6 +115,9 @@ export const showStudentNoteModal = async(config) => {
     });
 
     modal.setSaveButtonText(strings.save);
+    if (!noteData.canmanage) {
+        modal.setButtonDisabled('save', true);
+    }
     await modal.show();
 
     const root = modal.getRoot()[0];

@@ -7,7 +7,8 @@
     {
         "modalbody": "Notes are visible only to teachers with monitor access.",
         "textareaaria": "Supervision note",
-        "content": ""
+        "content": "",
+        "canmanage": true
     }
 }}
 <div class="livequizmonitor-note-modal-body">
@@ -16,7 +17,8 @@
               rows="6"
               maxlength="2000"
               data-region="note-content"
-              aria-label="{{textareaaria}}">{{content}}</textarea>
+              aria-label="{{textareaaria}}"
+              {{^canmanage}}disabled{{/canmanage}}>{{content}}</textarea>
     <div class="alert alert-danger mt-3 mb-0 d-none" data-region="request-error" role="alert">
         {{#str}} error:requestfailed, quiz_livequizmonitor {{/str}}
     </div>

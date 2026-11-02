@@ -68,6 +68,7 @@ $string['invalidscope'] = 'Invalid extend scope.';
 $string['lastupdated'] = 'Last updated: {$a}';
 $string['liveindicator'] = 'Live';
 $string['livequizmonitor'] = 'Live monitor';
+$string['livequizmonitor:managenotes'] = 'Add, edit and delete supervision notes in the live quiz monitor';
 $string['livequizmonitor:view'] = 'View the live quiz monitor report';
 $string['livequizmonitorreport'] = 'Live monitor';
 $string['logs:showlabel'] = 'Show logs';

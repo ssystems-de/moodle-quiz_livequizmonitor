@@ -78,6 +78,30 @@ final class get_student_note_test extends advanced_testcase {
     }
 
     /**
+     * Monitor viewers without the managenotes capability can read the note but not edit it.
+     */
+    public function test_execute_reports_canmanage(): void {
+        $this->resetAfterTest();
+
+        [$teacher, $student, $cm, $quiz] = $this->create_monitor_fixture();
+        student_note_manager::save_note((int) $quiz->id, (int) $student->id, (int) $teacher->id, 'Read only');
+
+        $this->setUser($teacher);
+        $this->assertTrue(get_student_note::execute($cm->id, 0, $student->id)['canmanage']);
+
+        $roleid = (int) $this->getDataGenerator()->create_role();
+        $context = \context_module::instance($cm->id);
+        assign_capability('quiz/livequizmonitor:view', CAP_ALLOW, $roleid, $context->id);
+        $viewer = $this->getDataGenerator()->create_and_enrol(get_course($cm->course), 'student');
+        role_assign($roleid, $viewer->id, $context->id);
+
+        $this->setUser($viewer);
+        $result = get_student_note::execute($cm->id, 0, $student->id);
+        $this->assertFalse($result['canmanage']);
+        $this->assertSame('Read only', $result['content']);
+    }
+
+    /**
      * Read returns empty payload when no note exists.
      */
     public function test_execute_returns_empty_when_no_note(): void {

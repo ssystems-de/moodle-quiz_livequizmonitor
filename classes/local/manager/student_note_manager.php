@@ -37,13 +37,14 @@ class student_note_manager {
     public const MAX_LENGTH = 2000;
 
     /**
-     * Whether the viewer may read/write notes for this quiz.
+     * Whether the viewer may add, edit and delete notes for this quiz.
      *
      * @param context_module $context Module context.
      * @return bool
      */
     public static function user_can_manage_notes(context_module $context): bool {
-        return has_capability('quiz/livequizmonitor:view', $context);
+        return has_capability('quiz/livequizmonitor:view', $context)
+            && has_capability('quiz/livequizmonitor:managenotes', $context);
     }
 
     /**

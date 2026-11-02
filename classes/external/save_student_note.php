@@ -80,6 +80,7 @@ class save_student_note extends external_api {
 
         self::validate_context($context);
         require_capability('quiz/livequizmonitor:view', $context);
+        require_capability('quiz/livequizmonitor:managenotes', $context);
 
         if (!student_note_manager::is_user_in_cohort((int) $params['userid'], $context, (int) $params['groupid'], $cm)) {
             throw new moodle_exception('error:usernotvisible', 'quiz_livequizmonitor');

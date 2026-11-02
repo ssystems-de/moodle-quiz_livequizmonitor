@@ -89,6 +89,7 @@ class get_student_note extends external_api {
             'content' => $content,
             'hasnote' => $content !== '',
             'timemodified' => $note ? (int) $note->timemodified : 0,
+            'canmanage' => student_note_manager::user_can_manage_notes($context),
         ];
     }
 
@@ -102,6 +103,7 @@ class get_student_note extends external_api {
             'content' => new external_value(PARAM_RAW, 'Note text'),
             'hasnote' => new external_value(PARAM_BOOL, 'Whether a non-empty note exists'),
             'timemodified' => new external_value(PARAM_INT, 'Last modified timestamp'),
+            'canmanage' => new external_value(PARAM_BOOL, 'Whether the viewer may add, edit and delete the note'),
         ]);
     }
 }
