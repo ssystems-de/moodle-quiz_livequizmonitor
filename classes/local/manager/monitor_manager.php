@@ -76,6 +76,7 @@ class monitor_manager {
         'email' => 'email',
         'progress' => 'progresspercent',
         'timeremaining' => 'timeremaining',
+        'endtime' => 'endtime',
     ];
 
     /**
@@ -746,6 +747,22 @@ class monitor_manager {
 
         $hastimer = in_array($status, self::INPROGRESS_OR_IDLE) && $timeremaining !== null;
 
+        // End time: the deadline for an active attempt, or the actual finish time for a completed one.
+        // Not started, and no deadline, show a dash, like the Time left column.
+        $endat = null;
+        $endtimedisplay = '—';
+        if ($status === self::STATUS_COMPLETED && !empty($attempt->timefinish)) {
+            $endat = (int) $attempt->timefinish;
+            $endtimedisplay = self::format_end_time((int) $attempt->timestart, $endat);
+        } else if (in_array($status, self::INPROGRESS_OR_IDLE) && $attemptendat !== null) {
+            $endat = $attemptendat;
+            $graceperiod = 0;
+            if (($quiz->overduehandling ?? '') === 'graceperiod') {
+                $graceperiod = (int) ($quiz->graceperiod ?? 0);
+            }
+            $endtimedisplay = self::format_end_time((int) $attempt->timestart, $endat, $graceperiod);
+        }
+
         return (object) [
             'courseid' => (int) $quiz->course,
             'userid' => (int) $user->id,
@@ -767,6 +784,8 @@ class monitor_manager {
             'timeremainingdisplay' => $timeremainingdisplay,
             'searchtext' => self::build_searchtext($user, $showemail),
             'attemptendat' => $attemptendat,
+            'endtime' => $endat,
+            'endtimedisplay' => $endtimedisplay,
             'canextend' => $canextend,
             'hastimer' => $hastimer,
             'hasnote' => false,
@@ -829,6 +848,40 @@ class monitor_manager {
             return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
         return sprintf('%02d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Format an attempt's end time for the End time column, e.g. "12:15".
+     *
+     * The time is shown in the current user's time zone. If the end time falls on a
+     * different day from the start of the attempt, the date is shown first, e.g.
+     * "06-Nov-2026 00:15". If there is a grace period, the end of the grace period
+     * is appended, e.g. "12:15 ~ 12:20".
+     *
+     * @param int $starttime Attempt start timestamp.
+     * @param int $endtime Attempt end timestamp.
+     * @param int $graceperiod Grace period in seconds, or 0 for none.
+     * @return string
+     */
+    public static function format_end_time(int $starttime, int $endtime, int $graceperiod = 0): string {
+        $timeformat = get_string('strftimetime24', 'langconfig');
+        $display = userdate($endtime, $timeformat);
+
+        // Compare calendar days in the user's time zone.
+        $dayformat = '%Y-%m-%d';
+        if (userdate($starttime, $dayformat, 99, false) !== userdate($endtime, $dayformat, 99, false)) {
+            $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
+            $display = userdate($endtime, $dateformat, 99, false) . ' ' . $display;
+        }
+
+        if ($graceperiod > 0) {
+            $display = get_string('endtime:range', 'quiz_livequizmonitor', (object) [
+                'from' => $display,
+                'to' => userdate($endtime + $graceperiod, $timeformat),
+            ]);
+        }
+
+        return $display;
     }
 
     /**

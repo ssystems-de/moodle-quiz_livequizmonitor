@@ -60,6 +60,7 @@ const SORT_FIELDS = {
     email: 'email',
     progress: 'progresspercent',
     timeremaining: 'timeremaining',
+    endtime: 'endtime',
 };
 
 /** Resolves the monitor's reactive instance once init() has created it. */
@@ -100,6 +101,7 @@ class MonitorComponent extends BaseComponent {
             PROGRESSCONTAINER: '[data-field="progress"] .progress[role="progressbar"]',
             PROGRESSLABEL: '[data-field="progress"] .livequizmonitor-progress-label',
             TIMER: '[data-field="timer"]',
+            ENDTIME: '[data-field="endtimedisplay"]',
             SEARCHINPUT: '[data-action="search"]',
             FILTERCHIP: '.livequizmonitor-filter-toolbar [data-action="filter-status"]',
             FILTERFLAG: '.livequizmonitor-filter-toolbar [data-action="filter-flag"]',
@@ -210,6 +212,7 @@ class MonitorComponent extends BaseComponent {
             {watch: 'students.status:updated', handler: this.renderStudents},
             {watch: 'students.canextend:updated', handler: this.renderStudents},
             {watch: 'students.attemptendat:updated', handler: this.renderStudents},
+            {watch: 'students.endtimedisplay:updated', handler: this.renderStudents},
             {watch: 'students.hasnote:updated', handler: this.renderStudents},
             {watch: 'students.hasuseroverride:updated', handler: this.renderStudents},
             {watch: 'students.hasusertimeoverride:updated', handler: this.renderStudents},
@@ -1079,9 +1082,7 @@ class MonitorComponent extends BaseComponent {
             progresspercent: student.progresspercent ?? 0,
             progressbarclass: student.progressbarclass ?? '',
             progresstext: student.progresstext ?? '',
-            hastimer: !!student.hastimer,
-            timeremaining: student.timeremaining,
-            timeremainingdisplay: student.timeremainingdisplay || formatDuration(student.timeremaining ?? 0),
+            ...this.buildTimeContext(student),
             showemailcolumn: this.showEmailColumn || !!student.showemail,
             showactionscolumn: this.showActionsColumn,
             canextend,
@@ -1112,6 +1113,21 @@ class MonitorComponent extends BaseComponent {
             highlight: student.highlight ?? '',
             extensioncells: this.buildExtensionCells(student),
             ...this.buildExtensionActionsContext(student),
+        };
+    }
+
+    /**
+     * Template context for a student's Time left and End time cells.
+     *
+     * @param {object} student Student state row
+     * @returns {object}
+     */
+    buildTimeContext(student) {
+        return {
+            hastimer: !!student.hastimer,
+            timeremaining: student.timeremaining,
+            timeremainingdisplay: student.timeremainingdisplay || formatDuration(student.timeremaining ?? 0),
+            endtimedisplay: student.endtimedisplay ?? '',
         };
     }
 
@@ -1316,6 +1332,10 @@ class MonitorComponent extends BaseComponent {
                 timer.removeAttribute('data-timeremaining');
                 timer.textContent = '—';
             }
+        }
+        const endtime = row.querySelector(this.selectors.ENDTIME);
+        if (endtime) {
+            endtime.textContent = student.endtimedisplay ?? '';
         }
         this.updateOverrideFlag(row, student);
         this.updateTimeOverrideFlag(row, student);
