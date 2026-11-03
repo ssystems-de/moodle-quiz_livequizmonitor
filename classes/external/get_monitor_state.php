@@ -139,6 +139,8 @@ class get_monitor_state extends external_api {
             'hastimer' => new external_value(PARAM_BOOL, 'Has countdown timer'),
             'searchtext' => new external_value(PARAM_TEXT, 'Lowercase search haystack'),
             'attemptendat' => new external_value(PARAM_INT, 'Attempt deadline timestamp', VALUE_OPTIONAL),
+            'endtime' => new external_value(PARAM_INT, 'Attempt deadline or finish timestamp', VALUE_OPTIONAL),
+            'endtimedisplay' => new external_value(PARAM_TEXT, 'Formatted end time'),
             'canextend' => new external_value(PARAM_BOOL, 'Viewer may extend time'),
             'hasnote' => new external_value(PARAM_BOOL, 'Student has a saved note'),
             'hasuseroverride' => new external_value(PARAM_BOOL, 'Student has a user override'),
@@ -208,6 +210,7 @@ class get_monitor_state extends external_api {
                 'progressbarclass' => $row->progressbarclass,
                 'timeremainingdisplay' => $row->timeremainingdisplay,
                 'hastimer' => (bool) $row->hastimer,
+                'endtimedisplay' => (string) $row->endtimedisplay,
                 'searchtext' => $row->searchtext,
                 'canextend' => (bool) $row->canextend,
                 'hasnote' => (bool) ($row->hasnote ?? false),
@@ -228,6 +231,9 @@ class get_monitor_state extends external_api {
             }
             if ($row->attemptendat !== null) {
                 $entry['attemptendat'] = (int) $row->attemptendat;
+            }
+            if ($row->endtime !== null) {
+                $entry['endtime'] = (int) $row->endtime;
             }
             $students[] = $entry;
         }

@@ -72,6 +72,7 @@ class MonitorComponent extends BaseComponent {
             PROGRESSCONTAINER: '[data-field="progress"] .progress[role="progressbar"]',
             PROGRESSLABEL: '[data-field="progress"] .livequizmonitor-progress-label',
             TIMER: '[data-field="timer"]',
+            ENDTIME: '[data-field="endtimedisplay"]',
             SEARCHINPUT: '[data-action="search"]',
             FILTERCHIP: '.livequizmonitor-filter-toolbar [data-action="filter-status"]',
             FILTERFLAG: '.livequizmonitor-filter-toolbar [data-action="filter-flag"]',
@@ -179,6 +180,7 @@ class MonitorComponent extends BaseComponent {
             {watch: 'students.status:updated', handler: this.renderStudents},
             {watch: 'students.canextend:updated', handler: this.renderStudents},
             {watch: 'students.attemptendat:updated', handler: this.renderStudents},
+            {watch: 'students.endtimedisplay:updated', handler: this.renderStudents},
             {watch: 'students.hasnote:updated', handler: this.renderStudents},
             {watch: 'students.hasuseroverride:updated', handler: this.renderStudents},
             {watch: 'students.hasusertimeoverride:updated', handler: this.renderStudents},
@@ -816,9 +818,14 @@ class MonitorComponent extends BaseComponent {
             email: 'email',
             progress: 'progresspercent',
             timeremaining: 'timeremaining',
+            endtime: 'endtime',
         };
 
         const field = sortable[sortcolumn] ?? 'status';
+
+        // Students without a time go last, whichever the sort direction,
+        // and are sorted by name in the sort direction.
+        const nullslast = field === 'timeremaining' || field === 'endtime';
 
         const statusRank = {
             inprogress: 0,
@@ -829,6 +836,7 @@ class MonitorComponent extends BaseComponent {
 
         rows.sort((a, b) => {
             let cmp;
+            let keeporder = false;
 
             if (field === 'status') {
                 cmp = (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
@@ -836,12 +844,16 @@ class MonitorComponent extends BaseComponent {
                 const valuea = a[field] ?? null;
                 const valueb = b[field] ?? null;
 
-                if (valuea === valueb) {
+                if (nullslast && valuea === null && valueb === null) {
+                    cmp = String(a.fullname ?? '').localeCompare(String(b.fullname ?? ''));
+                } else if (valuea === valueb) {
                     cmp = 0;
                 } else if (valuea === null) {
                     cmp = 1;
+                    keeporder = nullslast;
                 } else if (valueb === null) {
                     cmp = -1;
+                    keeporder = nullslast;
                 } else if (typeof valuea === 'number' && typeof valueb === 'number') {
                     cmp = valuea - valueb;
                 } else {
@@ -849,7 +861,7 @@ class MonitorComponent extends BaseComponent {
                 }
             }
 
-            if (sortdirection === 'desc') {
+            if (sortdirection === 'desc' && !keeporder) {
                 cmp = -cmp;
             }
 
@@ -914,6 +926,7 @@ class MonitorComponent extends BaseComponent {
             hastimer: !!student.hastimer,
             timeremaining: student.timeremaining,
             timeremainingdisplay: student.timeremainingdisplay || formatDuration(student.timeremaining ?? 0),
+            endtimedisplay: student.endtimedisplay ?? '',
             showemailcolumn: this.showEmailColumn || !!student.showemail,
             showactionscolumn: this.showActionsColumn,
             canextend,
@@ -1118,6 +1131,10 @@ class MonitorComponent extends BaseComponent {
                 timer.removeAttribute('data-timeremaining');
                 timer.textContent = '—';
             }
+        }
+        const endtime = row.querySelector(this.selectors.ENDTIME);
+        if (endtime) {
+            endtime.textContent = student.endtimedisplay ?? '';
         }
         this.updateOverrideFlag(row, student);
         this.updateTimeOverrideFlag(row, student);
