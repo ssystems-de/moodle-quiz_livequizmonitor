@@ -63,7 +63,7 @@ Feature: Live quiz monitor report
     And I press "Start attempt"
     And I log in as "teacher1"
     When I am on the live monitor report for "Quiz 1"
-    And I click on "In progress (1)" "button"
+    And I select "In progress" in the live monitor "status" filter
     Then I should see "Sam Student"
     But I should not see "Alex Other"
 

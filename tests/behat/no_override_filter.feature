@@ -46,18 +46,18 @@ Feature: Filter by no override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "None (1)" "button" should exist
+    Then the live monitor "overrides" filter should show "1" for "None"
     And I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
 
-    When I click on "None (1)" "button"
+    When I select "None" in the live monitor "overrides" filter
     Then I should not see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
 
-    # Toggling the same button off restores the full list.
-    When I click on "None (1)" "button"
+    # Selecting "All" restores the full list.
+    When I select "All" in the live monitor "overrides" filter
     Then I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
 
@@ -66,51 +66,51 @@ Feature: Filter by no override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "None (1)" "button"
+    When I select "None" in the live monitor "overrides" filter
     And I should not see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I click on "Reset all filters" "button"
 
     Then I should see "Student ONE" in the "[data-region='student-table']" "css_element"
-    And the "aria-pressed" attribute of "None (1)" "button" should contain "false"
+    And "None" should not be selected in the live monitor "overrides" filter
 
   @javascript
   Scenario: All is the default override filter and is selected again by Reset all filters
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then the "aria-pressed" attribute of "[data-flag='alloverride']" "css_element" should contain "true"
-    And I should see "All (3)" in the "[data-filter-group='overrides']" "css_element"
+    Then "All" should be selected in the live monitor "overrides" filter
+    And the live monitor "overrides" filter should show "3" for "All"
 
-    When I click on "User (1)" "button"
-    Then the "aria-pressed" attribute of "[data-flag='alloverride']" "css_element" should contain "false"
+    When I select "User" in the live monitor "overrides" filter
+    Then "All" should not be selected in the live monitor "overrides" filter
     And I should not see "Student THREE" in the "[data-region='student-table']" "css_element"
 
     # Clicking All clears the other override toggles.
-    When I click on "[data-flag='alloverride']" "css_element"
-    Then the "aria-pressed" attribute of "[data-flag='alloverride']" "css_element" should contain "true"
-    And the "aria-pressed" attribute of "User (1)" "button" should contain "false"
+    When I select "All" in the live monitor "overrides" filter
+    Then "All" should be selected in the live monitor "overrides" filter
+    And "User" should not be selected in the live monitor "overrides" filter
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
 
-    When I click on "None (1)" "button"
+    When I select "None" in the live monitor "overrides" filter
     And I click on "Reset all filters" "button"
-    Then the "aria-pressed" attribute of "[data-flag='alloverride']" "css_element" should contain "true"
-    And the "aria-pressed" attribute of "None (1)" "button" should contain "false"
+    Then "All" should be selected in the live monitor "overrides" filter
+    And "None" should not be selected in the live monitor "overrides" filter
 
   @javascript
   Scenario: The no-override toggle is mutually exclusive with the other override toggles
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "User (1)" "button"
-    And I click on "None (1)" "button"
-    Then the "aria-pressed" attribute of "None (1)" "button" should contain "true"
-    And the "aria-pressed" attribute of "User (1)" "button" should contain "false"
+    When I select "User" in the live monitor "overrides" filter
+    And I select "None" in the live monitor "overrides" filter
+    Then "None" should be selected in the live monitor "overrides" filter
+    And "User" should not be selected in the live monitor "overrides" filter
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student ONE" in the "[data-region='student-table']" "css_element"
 
-    When I click on "Group (1)" "button"
-    Then the "aria-pressed" attribute of "Group (1)" "button" should contain "true"
-    And the "aria-pressed" attribute of "None (1)" "button" should contain "false"
+    When I select "Group" in the live monitor "overrides" filter
+    Then "Group" should be selected in the live monitor "overrides" filter
+    And "None" should not be selected in the live monitor "overrides" filter
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I should not see "Student THREE" in the "[data-region='student-table']" "css_element"
 

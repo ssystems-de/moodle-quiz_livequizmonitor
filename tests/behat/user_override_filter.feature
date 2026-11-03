@@ -37,16 +37,16 @@ Feature: Filter by user override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "User (1)" "button" should exist
+    Then the live monitor "overrides" filter should show "1" for "User"
     And I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
 
-    When I click on "User (1)" "button"
+    When I select "User" in the live monitor "overrides" filter
     Then I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
 
-    # Toggling the same button off restores the full list.
-    When I click on "User (1)" "button"
+    # Selecting "All" restores the full list.
+    When I select "All" in the live monitor "overrides" filter
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
 
   @javascript
@@ -54,12 +54,12 @@ Feature: Filter by user override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "User (1)" "button"
+    When I select "User" in the live monitor "overrides" filter
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I click on "Reset all filters" "button"
 
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
-    And "User (1)" "button" should exist
+    And the live monitor "overrides" filter should show "1" for "User"
 
   @javascript
   Scenario: Teacher without manageoverrides or viewoverrides capability does not see the filter

@@ -73,6 +73,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: stretch;
+    background-color: var(--bs-gray-200, #e9ecef);
 }
 
 .livequizmonitor-filter-toolbar-header {
@@ -102,98 +103,122 @@
 
 .livequizmonitor-filter-groups {
     flex: 1 1 16rem;
+    /* Centre the filters in the toolbar, so the space above and below them is the same even when
+       the "Filters:" header is taller than a single row of filters. */
+    align-self: center;
     gap: 0.5rem;
-    align-items: stretch;
-}
-
-.livequizmonitor-filter-group {
-    display: flex;
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
     align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.15rem 0.5rem;
-    border: 1px solid var(--bs-border-color, #dee2e6);
-    border-radius: var(--bs-border-radius, 0.375rem);
-    background: var(--bs-tertiary-bg, #f8f9fa);
 }
 
-.livequizmonitor-filter-group-label {
-    font-size: 0.95em;
-    font-weight: 600;
-    color: var(--bs-secondary-color, #6c757d);
-    white-space: nowrap;
-    flex: 0 0 auto;
-    margin-top: 0.5rem;
-}
-
-.livequizmonitor-filter-group-controls {
+/*
+ * Each filter is an input group: its name as a leading label, then a search field, a select or
+ * a radio group shown as buttons. The rules below only rely on classes that exist in both
+ * Bootstrap 4 (Moodle 4.5) and Bootstrap 5 (Moodle 5.x), and fill in what differs between them.
+ */
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field {
     display: flex;
-    flex: 1 1 auto;
-    min-width: 0;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    width: auto;
 }
 
-/* Mimic styles of .livequizmonitor-filter-group-label */
-.livequizmonitor-group-menu label {
-    font-size: .95em;
-    font-weight: 600;
-    color: var(--bs-secondary-color, #6c757d);
-}
-/* Insert label separator */
-.livequizmonitor-group-menu label:after {
-    content: ":";
-}
-
-.livequizmonitor-group-menu .groupselector,
-.livequizmonitor-group-menu .groupselector form,
-.livequizmonitor-group-menu .groupselector .singleselect {
-    margin: 0;
-}
-
-.livequizmonitor-search-card {
-    display: block;
-    flex: 1 1 12rem;
-    box-sizing: border-box;
-    min-width: 12rem;
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field-search {
+    flex: 1 1 16rem;
     max-width: 32rem;
-    padding: 0;
-    background: var(--bs-body-bg, #fff);
-    border: 1px solid var(--bs-border-color, #dee2e6);
-    border-radius: var(--bs-border-radius, 0.375rem);
-    height:
-        calc(
-            var(--bs-btn-padding-y, 0.375rem) * 2 +
-            var(--bs-btn-line-height, 1.5) * 1rem +
-            var(--bs-btn-border-width, 1px) * 2
-        );
 }
 
-.livequizmonitor-search-card .livequizmonitor-search-input {
-    display: block;
-    width: 100%;
-    height: 100%;
+.livequizmonitor-filter-toolbar .input-group-text,
+.livequizmonitor-filter-toolbar .livequizmonitor-group-menu label {
+    font-weight: 600;
+    background-color: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+/* Square all items of a filter and round only its outer ends. Bootstrap 4 only does this for
+   items in -prepend/-append wrappers, which Bootstrap 5 no longer has. */
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field > .input-group-text,
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field > .form-control,
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field > .btn {
+    margin-left: -1px;
+    border-radius: 0;
+}
+
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field > :first-child {
+    margin-left: 0;
+    border-top-left-radius: var(--bs-border-radius, 0.5rem);
+    border-bottom-left-radius: var(--bs-border-radius, 0.5rem);
+}
+
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-field > :last-child {
+    border-top-right-radius: var(--bs-border-radius, 0.5rem);
+    border-bottom-right-radius: var(--bs-border-radius, 0.5rem);
+}
+
+/* Radio inputs are hidden; their labels are the buttons. Same as Bootstrap 5's .btn-check. */
+.livequizmonitor-filter-toolbar .btn-check {
+    position: absolute;
+    clip: rect(0, 0, 0, 0);
+    pointer-events: none;
+}
+
+.livequizmonitor-filter-toolbar .livequizmonitor-filter-option {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    /* The buttons are <label>s; drop the bottom margin Bootstrap 4's reboot gives labels. */
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+.livequizmonitor-filter-toolbar .btn-check:checked + .livequizmonitor-filter-option {
+    z-index: 1;
+    color: #fff;
+    background-color: var(--bs-primary, var(--primary, #0f6cbf));
+    border-color: var(--bs-primary, var(--primary, #0f6cbf));
+}
+
+.livequizmonitor-filter-toolbar .btn-check:focus-visible + .livequizmonitor-filter-option {
+    z-index: 2;
+    outline: 2px solid var(--bs-primary, var(--primary, #0f6cbf));
+    outline-offset: 2px;
+}
+
+/* Count badges: light grey for zero, dark grey for anything else. */
+.badge.livequizmonitor-count-badge {
+    color: #fff;
+    background-color: var(--bs-gray-700, #495057);
+}
+
+.badge.livequizmonitor-count-badge-zero {
+    color: #1d2125;
+    background-color: var(--bs-gray-300, #dee2e6);
+}
+
+/* The core group menu (label + select in a form) laid out like an input group. */
+.livequizmonitor-group-menu .groupselector,
+.livequizmonitor-group-menu .groupselector > div,
+.livequizmonitor-group-menu form {
+    display: flex;
+    align-items: stretch;
     margin: 0;
-    border: none;
-    box-shadow: none;
-    box-sizing: border-box;
-    padding: 0.4rem var(--bs-btn-padding-x, 0.75rem);
-    font-size: var(--bs-btn-font-size, 1rem);
-    line-height:
-        calc(
-            var(--bs-btn-padding-y, 0.375rem) * 2 +
-            var(--bs-btn-line-height, 1.5) * 1rem +
-            var(--bs-btn-border-width, 1px) * 2 - 2px
-        );
-    background: transparent;
-    color: var(--bs-body-color, #212529);
 }
 
-.livequizmonitor-search-card .livequizmonitor-search-input:focus {
-    border: none;
-    box-shadow: none;
+.livequizmonitor-filter-toolbar .livequizmonitor-group-menu label {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0.375rem 0.75rem;
+    white-space: nowrap;
+    border: 1px solid var(--bs-border-color, #ced4da);
+    border-radius: var(--bs-border-radius, 0.5rem) 0 0 var(--bs-border-radius, 0.5rem);
+}
+
+.livequizmonitor-filter-toolbar .livequizmonitor-group-menu select {
+    width: auto;
+    height: auto;
+    margin-left: -1px;
+    border-radius: 0 var(--bs-border-radius, 0.5rem) var(--bs-border-radius, 0.5rem) 0;
 }
 
 .livequizmonitor-search-input::placeholder {
@@ -210,8 +235,30 @@
     outline-offset: 2px;
 }
 
-.livequizmonitor-tile-active {
-    box-shadow: 0 0 0 2px var(--bs-primary, #0d6efd);
+/* The selected tile is filled with its own status colour, with a text colour that keeps it readable. */
+.livequizmonitor-tile-active.border-secondary {
+    background-color: var(--bs-secondary, var(--secondary, #ced4da));
+    color: #1d2125;
+}
+
+.livequizmonitor-tile-active.border-danger {
+    background-color: var(--bs-danger, var(--danger, #ca3120));
+    color: #fff;
+}
+
+.livequizmonitor-tile-active.border-warning {
+    background-color: var(--bs-warning, var(--warning, #f0ad4e));
+    color: #1d2125;
+}
+
+.livequizmonitor-tile-active.border-success {
+    background-color: var(--bs-success, var(--success, #357a32));
+    color: #fff;
+}
+
+.livequizmonitor-tile-active .livequizmonitor-tile-label,
+.livequizmonitor-tile-active .livequizmonitor-tile-percent {
+    color: inherit;
 }
 
 .livequizmonitor-header-actions {

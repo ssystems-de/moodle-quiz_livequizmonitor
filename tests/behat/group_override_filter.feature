@@ -46,12 +46,12 @@ Feature: Filter by group override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "Group (2)" "button" should exist
+    Then the live monitor "overrides" filter should show "2" for "Group"
     And I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
 
-    When I click on "Group (2)" "button"
+    When I select "Group" in the live monitor "overrides" filter
     Then I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I should see "Student THREE" in the "[data-region='student-table']" "css_element"
@@ -61,12 +61,12 @@ Feature: Filter by group override in live quiz monitor
     Given I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "Group (2)" "button"
+    When I select "Group" in the live monitor "overrides" filter
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
     And I click on "Reset all filters" "button"
 
     Then I should see "Student TWO" in the "[data-region='student-table']" "css_element"
-    And "Group (2)" "button" should exist
+    And the live monitor "overrides" filter should show "2" for "Group"
 
   @javascript
   Scenario: A user override only takes precedence for the settings it overrides
@@ -76,8 +76,8 @@ Feature: Filter by group override in live quiz monitor
 
     # student1's user override sets only attempts, so Group A's time limit still applies:
     # student1 counts towards both totals and shows both badges plus the timer badge.
-    Then "Group (2)" "button" should exist
-    And "User (1)" "button" should exist
+    Then the live monitor "overrides" filter should show "2" for "Group"
+    And the live monitor "overrides" filter should show "1" for "User"
     And "[data-field='fullname'] i[data-override-badge='user']" "css_element" should exist in the "Student ONE" "table_row"
     And "[data-field='fullname'] i[data-override-badge='group']" "css_element" should exist in the "Student ONE" "table_row"
     And "[data-field='timeremaining'] .livequizmonitor-override-flag-timer" "css_element" should exist in the "Student ONE" "table_row"
@@ -96,8 +96,8 @@ Feature: Filter by group override in live quiz monitor
 
     # Group A only overrides the time limit, which student1's user override also sets,
     # so the group override has no effect on student1.
-    Then "Group (1)" "button" should exist
-    And "User (1)" "button" should exist
+    Then the live monitor "overrides" filter should show "1" for "Group"
+    And the live monitor "overrides" filter should show "1" for "User"
     And "[data-field='fullname'] i[data-override-badge='user']" "css_element" should exist in the "Student ONE" "table_row"
     And "[data-field='fullname'] i[data-override-badge='group']" "css_element" should not exist in the "Student ONE" "table_row"
     And "[data-field='timeremaining'] .livequizmonitor-override-flag-timer" "css_element" should exist in the "Student ONE" "table_row"
@@ -122,7 +122,7 @@ Feature: Filter by group override in live quiz monitor
     And I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    Then "Group (3)" "button" should exist
+    Then the live monitor "overrides" filter should show "3" for "Group"
     And "[data-field='fullname'] i[data-override-badge='group']" "css_element" should exist in the "Student TWO" "table_row"
     And "[data-field='timeremaining'] .livequizmonitor-override-flag-timer" "css_element" should exist in the "Student TWO" "table_row"
 
@@ -142,19 +142,18 @@ Feature: Filter by group override in live quiz monitor
     And I log in as "teacher1"
     And I am on the live monitor report for "Quiz 1"
 
-    When I click on "User (1)" "button"
-    Then "User (1)" "button" should be visible
-    And the "aria-pressed" attribute of "User (1)" "button" should contain "true"
-    And the "aria-pressed" attribute of "Group (2)" "button" should contain "false"
+    When I select "User" in the live monitor "overrides" filter
+    Then "User" should be selected in the live monitor "overrides" filter
+    And "Group" should not be selected in the live monitor "overrides" filter
 
     # Clicking the group-override button cancels the user-override one, not adds to it.
-    When I click on "Group (2)" "button"
-    Then the "aria-pressed" attribute of "Group (2)" "button" should contain "true"
-    And the "aria-pressed" attribute of "User (1)" "button" should contain "false"
+    When I select "Group" in the live monitor "overrides" filter
+    Then "Group" should be selected in the live monitor "overrides" filter
+    And "User" should not be selected in the live monitor "overrides" filter
     And I should see "Student ONE" in the "[data-region='student-table']" "css_element"
     And I should not see "Student TWO" in the "[data-region='student-table']" "css_element"
 
     # They do NOT cancel the status chips, which remain an independent (AND) dimension.
-    When I click on "In progress" "button"
-    Then the "aria-pressed" attribute of "In progress" "button" should contain "true"
-    And the "aria-pressed" attribute of "Group (2)" "button" should contain "true"
+    When I select "In progress" in the live monitor "status" filter
+    Then "In progress" should be selected in the live monitor "status" filter
+    And "Group" should be selected in the live monitor "overrides" filter

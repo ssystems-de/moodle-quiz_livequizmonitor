@@ -444,4 +444,66 @@ class behat_quiz_livequizmonitor extends behat_base {
         $groupid = $DB->get_field('groups', 'id', ['name' => $groupname], MUST_EXIST);
         groups_remove_member($groupid, $userid);
     }
+
+    /**
+     * XPath of the label (shown as a button) of one option in a filter toolbar radio group.
+     *
+     * @param string $option Option label, without its count badge (e.g. "In progress").
+     * @param string $filter Filter group, as in data-filter-group (e.g. "status", "overrides").
+     * @return string
+     */
+    private function filter_option_label_xpath(string $option, string $filter): string {
+        $option = behat_context_helper::escape($option);
+        $filter = behat_context_helper::escape($filter);
+        return "//div[@data-region='filter-toolbar']//*[@data-filter-group={$filter}]" .
+            "//label[.//*[@data-option-label][normalize-space(.)={$option}]]";
+    }
+
+    /**
+     * Select an option of a filter toolbar radio group by clicking its button.
+     *
+     * @When /^I select "(?P<option>[^"]*)" in the live monitor "(?P<filter>[^"]*)" filter$/
+     * @param string $option Option label, without its count badge.
+     * @param string $filter Filter group (e.g. "status", "overrides").
+     */
+    public function i_select_in_the_live_monitor_filter(string $option, string $filter): void {
+        $this->execute('behat_general::i_click_on', [$this->filter_option_label_xpath($option, $filter), 'xpath_element']);
+    }
+
+    /**
+     * Check whether an option of a filter toolbar radio group is selected.
+     *
+     * @Then /^"(?P<option>[^"]*)" should (?P<not>not )?be selected in the live monitor "(?P<filter>[^"]*)" filter$/
+     * @param string $option Option label, without its count badge.
+     * @param string $not "not " to expect the option to be unselected.
+     * @param string $filter Filter group (e.g. "status", "overrides").
+     */
+    public function should_be_selected_in_the_live_monitor_filter(string $option, string $not, string $filter): void {
+        $label = $this->find('xpath', $this->filter_option_label_xpath($option, $filter));
+        $radio = $this->find('css', '#' . $label->getAttribute('for'));
+        if ($radio->isChecked() === !empty($not)) {
+            throw new \Behat\Mink\Exception\ExpectationException(
+                "\"{$option}\" is " . ($not ? '' : 'not ') . "selected in the \"{$filter}\" filter",
+                $this->getSession()
+            );
+        }
+    }
+
+    /**
+     * Check the count badge of an option of a filter toolbar radio group.
+     *
+     * @Then /^the live monitor "(?P<filter>[^"]*)" filter should show "(?P<count>\d+)" for "(?P<option>[^"]*)"$/
+     * @param string $filter Filter group (e.g. "status", "overrides").
+     * @param string $count Expected count.
+     * @param string $option Option label, without its count badge.
+     */
+    public function the_live_monitor_filter_should_show_for(string $filter, string $count, string $option): void {
+        $badge = $this->find('xpath', $this->filter_option_label_xpath($option, $filter) . "//*[@data-filter-count]");
+        if (trim($badge->getText()) !== $count) {
+            throw new \Behat\Mink\Exception\ExpectationException(
+                "\"{$option}\" in the \"{$filter}\" filter shows \"{$badge->getText()}\", expected \"{$count}\"",
+                $this->getSession()
+            );
+        }
+    }
 }
