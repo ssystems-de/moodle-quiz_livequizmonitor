@@ -293,6 +293,7 @@ class monitor_manager {
             'quizid' => (int) $quiz->id,
             'quizname' => format_string($quiz->name, true, ['context' => $context]),
             'quizpassword' => $quiz->password,
+            'sebquitpassword' => self::get_seb_quit_password((int) $quiz->id),
             'updatedat' => $now,
             'totalstudents' => count($students),
             'summary' => $summary,
@@ -368,6 +369,40 @@ class monitor_manager {
         }
 
         return $DB->get_records_sql($sql, $params);
+    }
+
+    /**
+     * Get the password that lets a student quit Safe Exam Browser during this quiz.
+     *
+     * Moodle only knows the quit password when SEB is configured manually or from a
+     * template, and only uses it when quitting SEB is allowed.
+     *
+     * @param int $quizid Quiz id.
+     * @return string The quit password, or '' if there is none.
+     */
+    protected static function get_seb_quit_password(int $quizid): string {
+        // The SEB access rule is a standard plugin, but it can be uninstalled.
+        if (!get_config('quizaccess_seb', 'version')) {
+            return '';
+        }
+
+        $settings = \quizaccess_seb\seb_quiz_settings::get_by_quiz_id($quizid);
+        if (!$settings) {
+            return '';
+        }
+
+        $usesquitpassword = [
+            \quizaccess_seb\settings_provider::USE_SEB_CONFIG_MANUALLY,
+            \quizaccess_seb\settings_provider::USE_SEB_TEMPLATE,
+        ];
+        if (!in_array((int) $settings->get('requiresafeexambrowser'), $usesquitpassword)) {
+            return '';
+        }
+        if (empty($settings->get('allowuserquitseb'))) {
+            return '';
+        }
+
+        return (string) $settings->get('quitpassword');
     }
 
     /**

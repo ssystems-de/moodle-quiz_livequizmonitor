@@ -990,4 +990,56 @@ final class monitor_manager_test extends advanced_testcase {
         $this->assertFalse($row->hasgroupoverride);
         $this->assertFalse($row->hasgrouptimeoverride);
     }
+
+    /**
+     * Data provider for test_get_state_seb_quit_password.
+     *
+     * @return array[]
+     */
+    public static function seb_quit_password_provider(): array {
+        return [
+            'SEB not required' => [0, 1, 'QuitPass456', ''],
+            'SEB configured manually' => [1, 1, 'QuitPass456', 'QuitPass456'],
+            'Quitting SEB not allowed' => [1, 0, 'QuitPass456', ''],
+            'No quit password' => [1, 1, '', ''],
+            'SEB client config' => [4, 1, 'QuitPass456', ''],
+        ];
+    }
+
+    /**
+     * The SEB quit password is only included when SEB uses it.
+     *
+     * @dataProvider seb_quit_password_provider
+     * @param int $requireseb Value of "Require the use of Safe Exam Browser".
+     * @param int $allowquit Whether quitting SEB is allowed.
+     * @param string $quitpassword Quit password in the SEB settings.
+     * @param string $expected Expected SEB quit password in the state.
+     */
+    public function test_get_state_seb_quit_password(
+        int $requireseb,
+        int $allowquit,
+        string $quitpassword,
+        string $expected
+    ): void {
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+
+        // SEB settings are only saved for a user who may configure SEB.
+        $this->setAdminUser();
+        $quiz = $generator->create_module('quiz', [
+            'course' => $course->id,
+            'seb_requiresafeexambrowser' => $requireseb,
+            'seb_allowuserquitseb' => $allowquit,
+            'seb_quitpassword' => $quitpassword,
+        ]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        $this->setUser($teacher);
+        $state = monitor_manager::get_state($course, $cm, $quiz, 0);
+
+        $this->assertSame($expected, $state->sebquitpassword);
+    }
 }
