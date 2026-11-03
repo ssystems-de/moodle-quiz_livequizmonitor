@@ -220,6 +220,53 @@ class behat_quiz_livequizmonitor extends behat_base {
     }
 
     /**
+     * Move the start time of a student's latest attempt.
+     *
+     * @Given /^the attempt by "(?P<username>[^"]*)" on quiz "(?P<quizname>[^"]*)" started at "(?P<time>[^"]*)"$/
+     * @param string $username Student username.
+     * @param string $quizname Quiz name.
+     * @param string $time Date and time in the site time zone, e.g. "2026-01-15 10:00".
+     */
+    public function the_attempt_started_at(string $username, string $quizname, string $time): void {
+        $this->set_latest_attempt_time($username, $quizname, 'timestart', $time);
+    }
+
+    /**
+     * Move the finish time of a student's latest attempt.
+     *
+     * @Given /^the attempt by "(?P<username>[^"]*)" on quiz "(?P<quizname>[^"]*)" finished at "(?P<time>[^"]*)"$/
+     * @param string $username Student username.
+     * @param string $quizname Quiz name.
+     * @param string $time Date and time in the site time zone, e.g. "2026-01-15 10:42".
+     */
+    public function the_attempt_finished_at(string $username, string $quizname, string $time): void {
+        $this->set_latest_attempt_time($username, $quizname, 'timefinish', $time);
+    }
+
+    /**
+     * Set a time field on a student's latest attempt.
+     *
+     * @param string $username Student username.
+     * @param string $quizname Quiz name.
+     * @param string $field Field name: timestart or timefinish.
+     * @param string $time Date and time in the site time zone.
+     */
+    private function set_latest_attempt_time(string $username, string $quizname, string $field, string $time): void {
+        global $DB;
+
+        $userid = $DB->get_field('user', 'id', ['username' => $username], MUST_EXIST);
+        $quizid = $DB->get_field('quiz', 'id', ['name' => $quizname], MUST_EXIST);
+        $attempts = $DB->get_records('quiz_attempts', ['quiz' => $quizid, 'userid' => $userid], 'attempt DESC', 'id', 0, 1);
+        $attempt = reset($attempts);
+        if (!$attempt) {
+            throw new \Behat\Mink\Exception\ExpectationException("No attempt by $username on $quizname", $this->getSession());
+        }
+
+        $timestamp = (new \DateTime($time, \core_date::get_server_timezone_object()))->getTimestamp();
+        $DB->set_field('quiz_attempts', $field, $timestamp, ['id' => $attempt->id]);
+    }
+
+    /**
      * Create a quiz attempt for a student.
      *
      * @param stdClass $quiz
