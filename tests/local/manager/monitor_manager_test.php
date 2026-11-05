@@ -31,6 +31,8 @@ require_once(__DIR__ . '/../../traits/quiz_attempt_activity_trait.php');
 use advanced_testcase;
 use mod_quiz\quiz_attempt;
 use quiz_livequizmonitor\tests\traits\quiz_attempt_activity_trait;
+use quizaccess_seb\seb_quiz_settings;
+use quizaccess_seb\settings_provider;
 
 /**
  * Tests for monitor_manager status mapping, sorting, and summary.
@@ -997,12 +999,17 @@ final class monitor_manager_test extends advanced_testcase {
      * @return array[]
      */
     public static function seb_quit_password_provider(): array {
+        $manual = settings_provider::USE_SEB_CONFIG_MANUALLY;
+        $template = settings_provider::USE_SEB_TEMPLATE;
         return [
-            'SEB not required' => [0, 1, 'QuitPass456', ''],
-            'SEB configured manually' => [1, 1, 'QuitPass456', 'QuitPass456'],
-            'Quitting SEB not allowed' => [1, 0, 'QuitPass456', ''],
-            'No quit password' => [1, 1, '', ''],
-            'SEB client config' => [4, 1, 'QuitPass456', ''],
+            'SEB not required' => [settings_provider::USE_SEB_NO, 1, 'QuitPass456', ''],
+            'SEB configured manually' => [$manual, 1, 'QuitPass456', 'QuitPass456'],
+            'SEB configured manually, quitting not allowed' => [$manual, 0, 'QuitPass456', ''],
+            'SEB configured manually, no quit password' => [$manual, 1, '', ''],
+            'SEB template' => [$template, 1, 'QuitPass456', 'QuitPass456'],
+            'SEB template, quitting not allowed' => [$template, 0, 'QuitPass456', ''],
+            'SEB uploaded config' => [settings_provider::USE_SEB_UPLOAD_CONFIG, 1, 'QuitPass456', ''],
+            'SEB client config' => [settings_provider::USE_SEB_CLIENT_CONFIG, 1, 'QuitPass456', ''],
         ];
     }
 
@@ -1021,21 +1028,53 @@ final class monitor_manager_test extends advanced_testcase {
         string $quitpassword,
         string $expected
     ): void {
+        global $CFG;
+
         $this->resetAfterTest();
 
         $generator = $this->getDataGenerator();
         $course = $generator->create_course();
         $teacher = $generator->create_and_enrol($course, 'editingteacher');
 
-        // SEB settings are only saved for a user who may configure SEB.
-        $this->setAdminUser();
-        $quiz = $generator->create_module('quiz', [
+        // Quit passwords are only saved for the manual and template modes.
+        $usestemplate = $requireseb === settings_provider::USE_SEB_TEMPLATE;
+        $settings = [
             'course' => $course->id,
-            'seb_requiresafeexambrowser' => $requireseb,
+            'seb_requiresafeexambrowser' => $usestemplate ? $requireseb : settings_provider::USE_SEB_CONFIG_MANUALLY,
             'seb_allowuserquitseb' => $allowquit,
             'seb_quitpassword' => $quitpassword,
-        ]);
+        ];
+        if ($usestemplate) {
+            $template = $generator->get_plugin_generator('quizaccess_seb')->create_template([]);
+            $settings['seb_templateid'] = $template->get('id');
+        }
+
+        // SEB settings are only saved for a user who may configure SEB.
+        $this->setAdminUser();
+        $quiz = $generator->create_module('quiz', $settings);
         $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        // Make sure the quit password was saved, so that no case passes just because it is missing.
+        $saved = seb_quiz_settings::get_by_quiz_id((int) $quiz->id);
+        $this->assertSame($quitpassword, (string) $saved->get('quitpassword'));
+
+        // For other modes, switch the mode afterwards. This leaves the old quit password behind,
+        // as when a teacher changes the mode, so the test proves that the mode is checked.
+        if ((int) $settings['seb_requiresafeexambrowser'] !== $requireseb) {
+            if ($requireseb === settings_provider::USE_SEB_UPLOAD_CONFIG) {
+                // This mode needs an uploaded config file.
+                get_file_storage()->create_file_from_pathname([
+                    'contextid' => \context_module::instance($cm->id)->id,
+                    'component' => 'quizaccess_seb',
+                    'filearea' => 'filemanager_sebconfigfile',
+                    'itemid' => 0,
+                    'filepath' => '/',
+                    'filename' => 'config.seb',
+                ], $CFG->dirroot . '/mod/quiz/accessrule/seb/tests/fixtures/unencrypted.seb');
+            }
+            $saved->set('requiresafeexambrowser', $requireseb);
+            $saved->save();
+        }
 
         $this->setUser($teacher);
         $state = monitor_manager::get_state($course, $cm, $quiz, 0);
