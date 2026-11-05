@@ -836,55 +836,45 @@ class monitor_manager {
             self::STATUS_COMPLETED => 3,
         ];
 
-        // Students without a time go last, whichever the sort direction,
-        // and are sorted by name in the sort direction.
-        $nullslast = in_array($sortcolumn, ['timeremaining', 'endtime'], true);
-
         usort($rows, static function (
             stdClass $a,
             stdClass $b
         ) use (
             $sortcolumn,
             $sortdirection,
-            $rank,
-            $nullslast
+            $rank
         ): int {
-            $keeporder = false;
             if ($sortcolumn === 'status') {
                 // Status uses defined rank rather than alphabetical order.
-                // The spaceship operator, <=>, works like strcmp for numbers.
-                $cmp = ($rank[$a->status] ?? 99) <=> ($rank[$b->status] ?? 99);
+                $valuea = $rank[$a->status] ?? 99;
+                $valueb = $rank[$b->status] ?? 99;
             } else {
                 $valuea = $a->{$sortcolumn} ?? null;
                 $valueb = $b->{$sortcolumn} ?? null;
-
-                if ($nullslast && $valuea === null && $valueb === null) {
-                    $cmp = strcmp($a->fullname, $b->fullname);
-                } else if ($valuea === $valueb) {
-                    $cmp = 0;
-                } else if ($valuea === null) {
-                    $cmp = 1;
-                    $keeporder = $nullslast;
-                } else if ($valueb === null) {
-                    $cmp = -1;
-                    $keeporder = $nullslast;
-                } else if (is_numeric($valuea) && is_numeric($valueb)) {
-                    $cmp = $valuea <=> $valueb;
-                } else {
-                    $cmp = strcmp((string) $valuea, (string) $valueb);
-                }
             }
 
-            if ($sortdirection === 'desc' && !$keeporder) {
-                $cmp = -$cmp;
+            // Ties, including two students with no value, are sorted by name.
+            if ($valuea === $valueb) {
+                $valuea = $a->fullname;
+                $valueb = $b->fullname;
             }
 
-            // Name tie-break stays A→Z regardless of sort direction.
-            if ($cmp === 0) {
-                $cmp = strcmp($a->fullname, $b->fullname);
+            // Students with no value, e.g. no time left, always go last, whichever the sort direction.
+            if ($valuea === null) {
+                return 1;
+            }
+            if ($valueb === null) {
+                return -1;
             }
 
-            return $cmp;
+            if (is_numeric($valuea) && is_numeric($valueb)) {
+                // The spaceship operator, <=>, works like strcmp for numbers.
+                $cmp = $valuea <=> $valueb;
+            } else {
+                $cmp = strcmp((string) $valuea, (string) $valueb);
+            }
+
+            return $sortdirection === 'desc' ? -$cmp : $cmp;
         });
     }
 

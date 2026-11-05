@@ -356,4 +356,23 @@ final class monitor_manager_endtime_test extends advanced_testcase {
             $getorder('desc')
         );
     }
+
+    /**
+     * Students with the same value are sorted by name, in the sort direction.
+     */
+    public function test_sort_ties_follow_sort_direction(): void {
+        $this->resetAfterTest();
+        $this->setTimezone(self::TIMEZONE);
+
+        [$course, $cm, $quiz, $quizgenerator, [$tied1, $tied2, $later]] = $this->create_quiz(['timelimit' => 3600], 3);
+        $this->start_attempt($quizgenerator, $quiz, $tied1, self::ts('2026-01-15 10:00'));
+        $this->start_attempt($quizgenerator, $quiz, $tied2, self::ts('2026-01-15 10:00'));
+        $this->start_attempt($quizgenerator, $quiz, $later, self::ts('2026-01-15 10:30'));
+
+        $order = array_keys($this->get_rows($course, $cm, $quiz, 'asc'));
+        $this->assertSame([(int) $tied1->id, (int) $tied2->id, (int) $later->id], $order);
+
+        $order = array_keys($this->get_rows($course, $cm, $quiz, 'desc'));
+        $this->assertSame([(int) $later->id, (int) $tied2->id, (int) $tied1->id], $order);
+    }
 }

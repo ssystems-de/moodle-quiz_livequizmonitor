@@ -100,6 +100,8 @@ class MonitorComponent extends BaseComponent {
         this.syncInFlight = false;
         this.syncQueued = false;
         this.hasReceivedPoll = false;
+        // User ids in the order sent by the server.
+        this.studentOrder = [];
     }
 
     /**
@@ -643,8 +645,13 @@ class MonitorComponent extends BaseComponent {
         }
 
         event.preventDefault();
+
+        // Invalidate any poll already in flight, so its older sort order can't undo this change.
+        this.localgeneration += 1;
         this.reactive.dispatch('setSort', column);
-        this.poll();
+
+        // Fetch the newly sorted rows once any in-flight poll has finished.
+        this.poll({force: true});
     }
 
     /**
@@ -723,6 +730,8 @@ class MonitorComponent extends BaseComponent {
                 this.canunblock = !!response.canunblock;
             }
 
+            // Save the server's sort order first, because updating the state re-renders the table.
+            this.studentOrder = (response.students ?? []).map((student) => String(student.userid));
             this.reactive.dispatch('refreshState', response);
             this.hasReceivedPoll = true;
             this.renderCohortLayout();
@@ -792,88 +801,27 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
-     * Return student rows from reactive state, sorted by the active column.
+     * Return student rows from reactive state, in the order sent by the server.
      *
-     * Note: the sorting algorithm here mirrors the one in "sort_student_rows()".
-     * See "class/local/manager/monitor_manager.php".
+     * The server sorts the rows, in "sort_student_rows()" in
+     * "classes/local/manager/monitor_manager.php". The reactive state keeps
+     * students in the order they were first added, so the server's order is
+     * saved separately on each poll, and applied here.
      *
      * @returns {Array}
      */
     getStudentRows() {
-        const state = this.getState();
-        const students = state?.students;
+        const students = this.getState()?.students;
 
         if (!students) {
             return [];
         }
 
         const rows = students instanceof Map ? [...students.values()] : [...students];
+        const position = new Map(this.studentOrder.map((userid, index) => [userid, index]));
+        const positionOf = (student) => position.get(String(student.userid ?? student.id)) ?? rows.length;
 
-        const sortcolumn = state?.meta?.sortcolumn ?? 'status';
-        const sortdirection = state?.meta?.sortdirection ?? 'asc';
-
-        const sortable = {
-            status: 'status',
-            fullname: 'fullname',
-            email: 'email',
-            progress: 'progresspercent',
-            timeremaining: 'timeremaining',
-            endtime: 'endtime',
-        };
-
-        const field = sortable[sortcolumn] ?? 'status';
-
-        // Students without a time go last, whichever the sort direction,
-        // and are sorted by name in the sort direction.
-        const nullslast = field === 'timeremaining' || field === 'endtime';
-
-        const statusRank = {
-            inprogress: 0,
-            idle: 1,
-            notstarted: 2,
-            completed: 3,
-        };
-
-        rows.sort((a, b) => {
-            let cmp;
-            let keeporder = false;
-
-            if (field === 'status') {
-                cmp = (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
-            } else {
-                const valuea = a[field] ?? null;
-                const valueb = b[field] ?? null;
-
-                if (nullslast && valuea === null && valueb === null) {
-                    cmp = String(a.fullname ?? '').localeCompare(String(b.fullname ?? ''));
-                } else if (valuea === valueb) {
-                    cmp = 0;
-                } else if (valuea === null) {
-                    cmp = 1;
-                    keeporder = nullslast;
-                } else if (valueb === null) {
-                    cmp = -1;
-                    keeporder = nullslast;
-                } else if (typeof valuea === 'number' && typeof valueb === 'number') {
-                    cmp = valuea - valueb;
-                } else {
-                    cmp = String(valuea).localeCompare(String(valueb));
-                }
-            }
-
-            if (sortdirection === 'desc' && !keeporder) {
-                cmp = -cmp;
-            }
-
-            // Name tie-break stays A→Z regardless of sort direction.
-            if (cmp === 0) {
-                cmp = String(a.fullname ?? '').localeCompare(String(b.fullname ?? ''));
-            }
-
-            return cmp;
-        });
-
-        return rows;
+        return rows.sort((a, b) => positionOf(a) - positionOf(b));
     }
 
     /**
