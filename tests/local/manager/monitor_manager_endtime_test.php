@@ -95,20 +95,27 @@ final class monitor_manager_endtime_test extends advanced_testcase {
     }
 
     /**
-     * Get the monitor rows, keyed by user id.
+     * Get the monitor rows in their sorted order, keyed by user id.
      *
      * @param \stdClass $course Course record.
      * @param \stdClass $cm Course module record.
      * @param \stdClass $quiz Quiz record.
-     * @param string $sortdirection Sort direction for the End time column.
+     * @param string $sortdirection Sort direction: asc or desc.
+     * @param string $sortcolumn Column to sort by.
      * @return \stdClass[]
      */
-    private function get_rows(\stdClass $course, \stdClass $cm, \stdClass $quiz, string $sortdirection = 'asc'): array {
+    private function get_rows(
+        \stdClass $course,
+        \stdClass $cm,
+        \stdClass $quiz,
+        string $sortdirection = 'asc',
+        string $sortcolumn = 'endtime'
+    ): array {
         global $DB;
 
         $this->setAdminUser();
         $quiz = $DB->get_record('quiz', ['id' => $quiz->id], '*', MUST_EXIST);
-        $state = monitor_manager::get_state($course, $cm, $quiz, 0, 'endtime', $sortdirection);
+        $state = monitor_manager::get_state($course, $cm, $quiz, 0, $sortcolumn, $sortdirection);
 
         $rows = [];
         foreach ($state->students as $row) {
@@ -329,8 +336,6 @@ final class monitor_manager_endtime_test extends advanced_testcase {
      * @param string $sortcolumn Column to sort by.
      */
     public function test_sort_students_without_a_time_last(string $sortcolumn): void {
-        global $DB;
-
         $this->resetAfterTest();
         $this->setTimezone(self::TIMEZONE);
 
@@ -340,21 +345,15 @@ final class monitor_manager_endtime_test extends advanced_testcase {
         $this->start_attempt($quizgenerator, $quiz, $early, $timestart - 600);
         $this->start_attempt($quizgenerator, $quiz, $late, $timestart);
 
-        $this->setAdminUser();
-        $quiz = $DB->get_record('quiz', ['id' => $quiz->id], '*', MUST_EXIST);
-        $getorder = function (string $sortdirection) use ($course, $cm, $quiz, $sortcolumn): array {
-            $state = monitor_manager::get_state($course, $cm, $quiz, 0, $sortcolumn, $sortdirection);
-            return array_map(fn($row) => $row->userid, $state->students);
-        };
+        // Ascending: earliest time first, then the students with no time, A to Z.
+        $rows = $this->get_rows($course, $cm, $quiz, 'asc', $sortcolumn);
+        $expected = [$early->id, $late->id, $notstarted1->id, $notstarted2->id];
+        $this->assertEquals($expected, array_keys($rows));
 
-        $this->assertSame(
-            [(int) $early->id, (int) $late->id, (int) $notstarted1->id, (int) $notstarted2->id],
-            $getorder('asc')
-        );
-        $this->assertSame(
-            [(int) $late->id, (int) $early->id, (int) $notstarted2->id, (int) $notstarted1->id],
-            $getorder('desc')
-        );
+        // Descending: latest time first, then the students with no time, Z to A.
+        $rows = $this->get_rows($course, $cm, $quiz, 'desc', $sortcolumn);
+        $expected = [$late->id, $early->id, $notstarted2->id, $notstarted1->id];
+        $this->assertEquals($expected, array_keys($rows));
     }
 
     /**
@@ -369,10 +368,14 @@ final class monitor_manager_endtime_test extends advanced_testcase {
         $this->start_attempt($quizgenerator, $quiz, $tied2, self::ts('2026-01-15 10:00'));
         $this->start_attempt($quizgenerator, $quiz, $later, self::ts('2026-01-15 10:30'));
 
-        $order = array_keys($this->get_rows($course, $cm, $quiz, 'asc'));
-        $this->assertSame([(int) $tied1->id, (int) $tied2->id, (int) $later->id], $order);
+        // Ascending: the two tied students first, A to Z, then the later one.
+        $rows = $this->get_rows($course, $cm, $quiz, 'asc');
+        $expected = [$tied1->id, $tied2->id, $later->id];
+        $this->assertEquals($expected, array_keys($rows));
 
-        $order = array_keys($this->get_rows($course, $cm, $quiz, 'desc'));
-        $this->assertSame([(int) $later->id, (int) $tied2->id, (int) $tied1->id], $order);
+        // Descending: the later student first, then the two tied students, Z to A.
+        $rows = $this->get_rows($course, $cm, $quiz, 'desc');
+        $expected = [$later->id, $tied2->id, $tied1->id];
+        $this->assertEquals($expected, array_keys($rows));
     }
 }
