@@ -114,6 +114,7 @@ class monitor_report implements renderable, templatable {
         return [
             'quizname' => $state->quizname,
             'quizpassword' => $state->quizpassword,
+            'sebquitpassword' => $state->sebquitpassword,
             'totalstudents' => $state->totalstudents,
             'hasstudents' => (bool) $state->hasstudents,
             'updatedat' => $state->updatedat,
@@ -136,6 +137,7 @@ class monitor_report implements renderable, templatable {
             'inprogresscount' => $inprogresscount,
             'idlecount' => $idlecount,
             'showpasswordlabel' => get_string('showpassword:label', 'quiz_livequizmonitor'),
+            'showsebquitpasswordlabel' => get_string('showsebquitpassword:label', 'quiz_livequizmonitor'),
             'bulkextenddisabled' => ($inprogresscount + $idlecount) === 0,
             'bulkextendlabel' => get_string('extend:bulklabel', 'quiz_livequizmonitor'),
             'extendrowlabel' => get_string('extend:rowaction', 'quiz_livequizmonitor'),

@@ -89,6 +89,7 @@ export const createInitialState = () => ({
         cmid: 0,
         quizname: '',
         quizpassword: '',
+        sebquitpassword: '',
         updatedat: 0,
         totalstudents: 0,
         hasstudents: false,
@@ -146,6 +147,7 @@ class MonitorMutations {
         stateManager.state.meta.cmid = payload.cmid;
         stateManager.state.meta.quizname = payload.quizname;
         stateManager.state.meta.quizpassword = payload.quizpassword;
+        stateManager.state.meta.sebquitpassword = payload.sebquitpassword;
         stateManager.state.meta.updatedat = payload.updatedat;
         stateManager.state.meta.totalstudents = payload.totalstudents;
         stateManager.state.meta.hasstudents = payload.hasstudents;

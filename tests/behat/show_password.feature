@@ -42,3 +42,37 @@ Feature: Show quiz password in Live Quiz Monitor
     # Click Close button -> Popup disappears
     When I click on "Close" "button" in the ".modal-dialog" "css_element"
     Then "Quiz password" "dialogue" should not exist
+
+  @javascript
+  Scenario: Show SEB quit password button displays quit password modal
+    Given the following "activities" exist:
+      | activity | name          | course | quizpassword  | seb_requiresafeexambrowser | seb_allowuserquitseb | seb_quitpassword |
+      | quiz     | Quiz With SEB | C1     | SecretPass123 | 1                          | 1                    | QuitPass456      |
+    # Both password buttons appear
+    When I am on the live monitor report for "Quiz With SEB"
+    Then "Show quiz password" "button" should exist
+    And "Show SEB quit password" "button" should exist
+
+    # Click button -> Popup appears with quit password and Close button
+    When I click on "Show SEB quit password" "button"
+    Then "SEB quit password" "dialogue" should exist
+    And I should see "QuitPass456" in the ".modal-dialog" "css_element"
+    And I should not see "SecretPass123" in the ".modal-dialog" "css_element"
+
+    # Click Close button -> Popup disappears
+    When I click on "Close" "button" in the ".modal-dialog" "css_element"
+    Then "SEB quit password" "dialogue" should not exist
+
+  @javascript
+  Scenario Outline: Show SEB quit password button does not appear when the quit password is not used
+    Given the following "activities" exist:
+      | activity | name     | course | seb_requiresafeexambrowser | seb_allowuserquitseb | seb_quitpassword |
+      | quiz     | Quiz SEB | C1     | <requireseb>               | <allowquit>          | <quitpassword>   |
+    When I am on the live monitor report for "Quiz SEB"
+    Then "Show SEB quit password" "button" should not exist
+
+    Examples:
+      | requireseb | allowquit | quitpassword |
+      | 0          | 1         | QuitPass456  |
+      | 1          | 0         | QuitPass456  |
+      | 1          | 1         |              |

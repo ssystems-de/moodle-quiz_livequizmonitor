@@ -84,6 +84,7 @@ class MonitorComponent extends BaseComponent {
             EXTENDBULK: '[data-action="extend-bulk"]',
             COLUMNTOGGLE: '[data-action="toggle-column"]',
             SHOWPASSWORD: '[data-action="show-password"]',
+            SHOWSEBQUITPASSWORD: '[data-action="show-seb-quit-password"]',
         };
     }
 
@@ -305,6 +306,13 @@ class MonitorComponent extends BaseComponent {
             return;
         }
 
+        const sebQuitPasswordBtn = event.target.closest(this.selectors.SHOWSEBQUITPASSWORD);
+        if (sebQuitPasswordBtn && this.element.contains(sebQuitPasswordBtn)) {
+            event.preventDefault();
+            this.openShowSebQuitPasswordModal();
+            return;
+        }
+
         const bulkBtn = event.target.closest(this.selectors.EXTENDBULK);
         if (bulkBtn && this.element.contains(bulkBtn)) {
             event.preventDefault();
@@ -371,7 +379,18 @@ class MonitorComponent extends BaseComponent {
     async openShowPasswordModal() {
         const state = this.getState();
         await showPasswordModal({
-            quizpassword: state.meta.quizpassword ?? ''
+            password: state.meta.quizpassword ?? ''
+        });
+    }
+
+    /**
+     * Open show-password modal for the Safe Exam Browser quit password.
+     */
+    async openShowSebQuitPasswordModal() {
+        const state = this.getState();
+        await showPasswordModal({
+            password: state.meta.sebquitpassword ?? '',
+            titlestringid: 'showsebquitpassword:modaltitle',
         });
     }
 
