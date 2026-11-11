@@ -17,6 +17,7 @@
         "hastimer": true,
         "timeremaining": 600,
         "timeremainingdisplay": "10:00",
+        "endtimedisplay": "12:15 ~ 12:20",
         "showactionscolumn": true,
         "isblocked": false,
         "blockedflaglabel": "Blocked by one-session rule",
@@ -99,6 +100,9 @@
            title="{{timeoverrideflaglabel}}"
            aria-label="{{timeoverrideflaglabel}}"></i>
         {{/hastimeoverride}}
+    </td>
+    <td data-column="endtime" data-field="endtime">
+        <span class="livequizmonitor-timer" data-field="endtimedisplay" data-colcontent="endtime">{{endtimedisplay}}</span>
     </td>
     {{#showactionscolumn}}
     <td class="livequizmonitor-actions" data-column="actions" data-field="actions">

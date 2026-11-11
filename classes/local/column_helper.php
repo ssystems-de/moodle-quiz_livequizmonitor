@@ -52,6 +52,7 @@ class column_helper {
             'email' => ['langkey' => 'table:email', 'locked' => false],
             'progress' => ['langkey' => 'table:progress', 'locked' => false],
             'timeremaining' => ['langkey' => 'table:timeremaining', 'locked' => false],
+            'endtime' => ['langkey' => 'table:endtime', 'locked' => false],
             'actions' => ['langkey' => 'table:actions', 'locked' => true],
         ];
     }
