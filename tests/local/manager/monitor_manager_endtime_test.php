@@ -278,8 +278,8 @@ final class monitor_manager_endtime_test extends advanced_testcase {
     }
 
     /**
-     * Not started and no deadline show a dash, and completed shows when the student
-     * actually finished, never a range.
+     * Not started and no deadline show a dash. Completed shows when the attempt was due
+     * to close (with the grace period, as for an active attempt), not when it was submitted.
      */
     public function test_end_time_by_status(): void {
         global $DB;
@@ -309,11 +309,42 @@ final class monitor_manager_endtime_test extends advanced_testcase {
         $this->assertNull($rows[$notstarted->id]->endtime);
         $this->assertSame('—', $rows[$notstarted->id]->endtimedisplay);
 
-        $this->assertSame(self::ts('2026-01-15 10:42'), $rows[$completed->id]->endtime);
-        $this->assertSame('10:42', $rows[$completed->id]->endtimedisplay);
+        // Started at 10:00 with a 1 hour limit, so due at 11:00, although submitted at 10:42.
+        $this->assertSame(self::ts('2026-01-15 11:00'), $rows[$completed->id]->endtime);
+        $this->assertSame('11:00 ~ 11:05', $rows[$completed->id]->endtimedisplay);
 
         $this->assertNull($rows[$nodeadline->id]->endtime);
         $this->assertSame('—', $rows[$nodeadline->id]->endtimedisplay);
+    }
+
+    /**
+     * A completed attempt's end time follows the student's own deadline, including their overrides.
+     */
+    public function test_completed_end_time_follows_overrides(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setTimezone(self::TIMEZONE);
+
+        [$course, $cm, $quiz, $quizgenerator, [$student, $overridden]] = $this->create_quiz(['timelimit' => 3600], 2);
+
+        // A 90 minute time limit for one student only.
+        $DB->insert_record('quiz_overrides', (object) ['quiz' => $quiz->id, 'userid' => $overridden->id, 'timelimit' => 5400]);
+
+        // Both started at 10:00, and submitted early.
+        foreach ([$student, $overridden] as $user) {
+            $attempt = $this->start_attempt($quizgenerator, $quiz, $user, self::ts('2026-01-15 10:00'));
+            $DB->update_record('quiz_attempts', (object) [
+                'id' => $attempt->id,
+                'state' => \mod_quiz\quiz_attempt::FINISHED,
+                'timefinish' => self::ts('2026-01-15 10:45'),
+            ]);
+        }
+
+        $rows = $this->get_rows($course, $cm, $quiz);
+
+        $this->assertSame('11:00', $rows[$student->id]->endtimedisplay);
+        $this->assertSame('11:30', $rows[$overridden->id]->endtimedisplay);
     }
 
     /**
