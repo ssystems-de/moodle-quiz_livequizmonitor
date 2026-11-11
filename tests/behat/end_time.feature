@@ -44,7 +44,7 @@ Feature: Show each student's end time in Live Quiz Monitor
     And I should see "11:00" in the "Sam Student" "table_row"
     And I should see "16-Jan-2026 00:30" in the "Pat Pupil" "table_row"
 
-  Scenario: A grace period shows the end time as a range, but a completed attempt shows when it finished
+  Scenario: A grace period shows the end time as a range, and a completed attempt shows when it was due to close
     Given the following "activities" exist:
       | activity | name   | course | timelimit | overduehandling | graceperiod |
       | quiz     | Quiz 1 | C1     | 4500      | graceperiod     | 300         |
@@ -59,8 +59,9 @@ Feature: Show each student's end time in Live Quiz Monitor
     And I log in as "teacher1"
     When I am on the live monitor report for "Quiz 1"
     Then I should see "12:15 ~ 12:20" in the "Sam Student" "table_row"
-    And I should see "11:42" in the "Pat Pupil" "table_row"
-    And I should not see "~" in the "Pat Pupil" "table_row"
+    # Pat submitted at 11:42, but the attempt was due to close at 12:15.
+    And I should see "12:15 ~ 12:20" in the "Pat Pupil" "table_row"
+    And I should not see "11:42" in the "Pat Pupil" "table_row"
 
   Scenario: Sort by end time, with students who have no end time last
     Given the following "activities" exist:

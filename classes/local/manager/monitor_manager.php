@@ -183,11 +183,14 @@ class monitor_manager {
 
         // Load progress and access managers for all attempts at once instead of one quiz_attempt per student.
         $progressmap = self::load_attempt_progress($relevantattempts);
-        $activeuserids = array_keys(array_filter(
+        // Active attempts need an access manager for the time left, and active and
+        // completed attempts both need one for the end time (when the attempt was due to close).
+        $timeduserids = array_keys(array_filter(
             $relevantattempts,
             static fn(stdClass $attempt): bool => self::is_active_attempt_state($attempt->state)
+                || self::is_completed_attempt_state($attempt->state)
         ));
-        $accessmanagers = self::get_access_managers((int) $quiz->id, $activeuserids, $now);
+        $accessmanagers = self::get_access_managers((int) $quiz->id, $timeduserids, $now);
         $canextend = extend_time_manager::user_can_extend($context);
 
         $rows = [];
@@ -443,7 +446,7 @@ class monitor_manager {
      * effective settings exactly like quiz_settings::create($quizid, $userid).
      *
      * @param int $quizid Quiz id.
-     * @param int[] $userids Users with an active attempt.
+     * @param int[] $userids Users with an active or completed attempt.
      * @param int $now Current timestamp.
      * @return access_manager[] Map user id => access manager.
      */
@@ -622,6 +625,7 @@ class monitor_manager {
         $timeremaining = null;
         $timeremainingdisplay = '';
         $attemptendat = null;
+        $scheduledend = null;
 
         if ($attempt !== null && $status !== self::STATUS_NOTSTARTED) {
             $answered = $progress->answered ?? 0;
@@ -652,6 +656,15 @@ class monitor_manager {
                         $statuslabel = self::status_label($status);
                     }
                 }
+                // When the attempt was due to close, from its start time, the time limit, the close
+                // time, and the student's overrides. For a completed attempt this is not when it was
+                // submitted, which may have been earlier.
+                if ($accessmanager !== null) {
+                    $endtime = $accessmanager->get_end_time($attempt);
+                    if ($endtime !== false) {
+                        $scheduledend = (int) $endtime;
+                    }
+                }
             } catch (\Exception $e) {
                 debugging('Failed to load attempt ' . $attempt->id . ': ' . $e->getMessage(), DEBUG_DEVELOPER);
             }
@@ -670,15 +683,12 @@ class monitor_manager {
 
         $hastimer = in_array($status, self::INPROGRESS_OR_IDLE) && $timeremaining !== null;
 
-        // End time: the deadline for an active attempt, or the actual finish time for a completed one.
+        // End time: when the attempt was due to close, for active and completed attempts alike.
         // Not started, and no deadline, show a dash, like the Time left column.
         $endat = null;
         $endtimedisplay = '—';
-        if ($status === self::STATUS_COMPLETED && !empty($attempt->timefinish)) {
-            $endat = (int) $attempt->timefinish;
-            $endtimedisplay = self::format_end_time((int) $attempt->timestart, $endat);
-        } else if (in_array($status, self::INPROGRESS_OR_IDLE) && $attemptendat !== null) {
-            $endat = $attemptendat;
+        if ($status !== self::STATUS_NOTSTARTED && $scheduledend !== null) {
+            $endat = $scheduledend;
             $graceperiod = 0;
             if (($quiz->overduehandling ?? '') === 'graceperiod') {
                 $graceperiod = (int) ($quiz->graceperiod ?? 0);
