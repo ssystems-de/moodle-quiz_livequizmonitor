@@ -114,6 +114,7 @@ export const createInitialState = () => ({
         groupoverridecount: 0,
         canviewattempts: false,
         canviewlogs: false,
+        extensioncolumns: [],
     },
     summary: emptySummary(),
     students: [],
@@ -126,6 +127,9 @@ export const createInitialState = () => ({
  * @returns {Array}
  */
 const normaliseStudents = (students) => students.map((student) => ({
+    extensioncells: [],
+    highlight: '',
+    extensionactions: [],
     ...student,
     id: student.userid,
 }));
@@ -185,6 +189,7 @@ class MonitorMutations {
         if (payload.groupoverridecount !== undefined) {
             stateManager.state.meta.groupoverridecount = payload.groupoverridecount;
         }
+        stateManager.state.meta.extensioncolumns = payload.extensioncolumns ?? [];
 
         // Update summary buckets in place so watchers receive summary.<bucket>:updated events.
         ['notstarted', 'inprogress', 'idle', 'completed'].forEach((key) => {

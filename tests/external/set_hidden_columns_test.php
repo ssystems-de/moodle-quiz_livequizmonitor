@@ -118,4 +118,21 @@ final class set_hidden_columns_test extends advanced_testcase {
         $this->expectException(required_capability_exception::class);
         set_hidden_columns::execute($cm->id, ['email']);
     }
+
+    /**
+     * Shown default-hidden extension columns are saved and returned.
+     */
+    public function test_execute_saves_shown_columns(): void {
+        $this->resetAfterTest();
+
+        [$teacher, , $cm] = $this->create_monitor_fixture();
+        $this->setUser($teacher);
+
+        $result = set_hidden_columns::execute($cm->id, ['local_sebstatus-battery'], ['local_sebstatus-wifi', 'email']);
+        $result = \core_external\external_api::clean_returnvalue(set_hidden_columns::execute_returns(), $result);
+
+        $this->assertSame(['local_sebstatus-battery'], $result['hidden']);
+        $this->assertSame(['local_sebstatus-wifi'], $result['shown']);
+        $this->assertSame(['local_sebstatus-wifi'], column_helper::get_shown_columns((int) $teacher->id));
+    }
 }

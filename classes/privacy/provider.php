@@ -61,30 +61,41 @@ class provider implements
             column_helper::PREFERENCE_NAME,
             'privacy:metadata:preference:hiddencolumns'
         );
+        $collection->add_user_preference(
+            column_helper::SHOWN_PREFERENCE_NAME,
+            'privacy:metadata:preference:showncolumns'
+        );
 
         return $collection;
     }
 
     /**
-     * Export the live monitor hide/show column preference for a user.
+     * Export the live monitor hide/show column preferences for a user.
      *
      * @param int $userid User id.
      */
     public static function export_user_preferences(int $userid): void {
-        $preference = get_user_preferences(column_helper::PREFERENCE_NAME, null, $userid);
-        if ($preference === null) {
-            return;
+        $preferences = [
+            column_helper::PREFERENCE_NAME => 'privacy:metadata:preference:hiddencolumns_desc',
+            column_helper::SHOWN_PREFERENCE_NAME => 'privacy:metadata:preference:showncolumns_desc',
+        ];
+
+        foreach ($preferences as $name => $descriptionkey) {
+            $preference = get_user_preferences($name, null, $userid);
+            if ($preference === null) {
+                continue;
+            }
+
+            $columns = json_decode($preference, true);
+            $summary = implode(', ', is_array($columns) ? $columns : []);
+
+            writer::export_user_preference(
+                'quiz_livequizmonitor',
+                $name,
+                $preference,
+                get_string($descriptionkey, 'quiz_livequizmonitor', $summary)
+            );
         }
-
-        $hidden = json_decode($preference, true);
-        $summary = implode(', ', is_array($hidden) ? $hidden : []);
-
-        writer::export_user_preference(
-            'quiz_livequizmonitor',
-            column_helper::PREFERENCE_NAME,
-            $preference,
-            get_string('privacy:metadata:preference:hiddencolumns_desc', 'quiz_livequizmonitor', $summary)
-        );
     }
 
     /**
