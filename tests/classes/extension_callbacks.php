@@ -27,6 +27,7 @@ namespace quiz_livequizmonitor\tests;
 use core\output\pix_icon;
 use moodle_url;
 use quiz_livequizmonitor\hook\before_monitor_page_render;
+use quiz_livequizmonitor\hook\declare_filters;
 use quiz_livequizmonitor\hook\extend_rows;
 
 /**
@@ -40,6 +41,9 @@ use quiz_livequizmonitor\hook\extend_rows;
  * - values: list of [column id, userid, value, sortvalue, ishtml]
  * - highlights: list of [userid, severity]
  * - actions: list of [userid, label, url path, withicon, newtab]
+ * - groups: list of [component, label] (declare_filters)
+ * - filters: list of [filter id, label, withicon] (declare_filters)
+ * - matches: list of [filter id, userid]
  * - throw: true to throw after the contributions were made
  */
 class extension_callbacks {
@@ -49,7 +53,7 @@ class extension_callbacks {
     /** @var array[] Behaviour per component. */
     public static $config = [];
 
-    /** @var array[] Recorded calls per hook class: list of ['component', 'userids']. */
+    /** @var array[] Recorded calls per hook class: list of ['component', 'userids'] (declare_filters: ['component', 'quizid']). */
     public static $calls = [];
 
     /** @var callable|null Callback run by the page hook. */
@@ -65,7 +69,27 @@ class extension_callbacks {
     }
 
     /**
-     * Row callback: add the configured columns, values, highlights and actions.
+     * Declaration callback: declare the configured filter groups and filters.
+     *
+     * @param declare_filters $hook Hook.
+     */
+    public static function declare_filters(declare_filters $hook): void {
+        self::$calls[declare_filters::class][] = [
+            'component' => static::COMPONENT,
+            'quizid' => (int) $hook->get_quiz()->id,
+        ];
+        $config = self::$config[static::COMPONENT] ?? [];
+
+        foreach ($config['groups'] ?? [] as [$component, $label]) {
+            $hook->add_filter_group($component, $label);
+        }
+        foreach ($config['filters'] ?? [] as [$id, $label, $withicon]) {
+            $hook->add_filter($id, $label, $withicon ? new pix_icon('i/warning', '') : null);
+        }
+    }
+
+    /**
+     * Row callback: add the configured columns, values, highlights, actions and filter matches.
      *
      * @param extend_rows $hook Hook.
      */
@@ -92,6 +116,9 @@ class extension_callbacks {
         foreach ($config['actions'] ?? [] as [$userid, $label, $path, $withicon, $newtab]) {
             $icon = $withicon ? new pix_icon('i/info', '') : null;
             $hook->add_action($userid, $label, new moodle_url($path, ['id' => $userid]), $icon, $newtab);
+        }
+        foreach ($config['matches'] ?? [] as [$id, $userid]) {
+            $hook->add_filter_match($id, $userid);
         }
 
         if (!empty($config['throw'])) {

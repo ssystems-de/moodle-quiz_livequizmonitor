@@ -103,6 +103,8 @@ class MonitorComponent extends BaseComponent {
             SEARCHINPUT: '[data-action="search"]',
             FILTERCHIP: '.livequizmonitor-filter-toolbar [data-action="filter-status"]',
             FILTERFLAG: '.livequizmonitor-filter-toolbar [data-action="filter-flag"]',
+            EXTENSIONFILTER: '.livequizmonitor-filter-toolbar [data-action="filter-extension"]',
+            EXTENSIONFILTERALL: '.livequizmonitor-filter-toolbar [data-action="filter-extension-all"]',
             CLEARFILTERS: '[data-action="clear-filters"]',
             FILTEREMPTY: '[data-region="filter-empty"]',
             STUDENTTABLE: '[data-region="student-table"]',
@@ -235,6 +237,9 @@ class MonitorComponent extends BaseComponent {
             {watch: 'meta.useroverridecount:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.groupoverridecount:updated', handler: this.renderFilterToolbar},
             {watch: 'meta.canviewoverrides:updated', handler: this.renderFilterToolbar},
+            // Counts change, and a selected filter that is no longer declared was removed from the
+            // selection, which fires no event of its own: re-apply all filters.
+            {watch: 'meta.extensionfiltergroups:updated', handler: this.afterFilterChange},
         ];
     }
 
@@ -547,6 +552,7 @@ class MonitorComponent extends BaseComponent {
 
         this.addEventListener(this.element, 'click', this.handleFilterClick);
         this.addEventListener(this.element, 'click', this.handleFlagFilterClick);
+        this.addEventListener(this.element, 'click', this.handleExtensionFilterClick);
 
         const clearBtn = this.getElement(this.selectors.CLEARFILTERS);
         if (clearBtn) {
@@ -608,6 +614,25 @@ class MonitorComponent extends BaseComponent {
         }
         event.preventDefault();
         this.reactive.dispatch('setFlagFilter', flag);
+        this.afterFilterChange();
+    }
+
+    /**
+     * Delegate clicks on the filter buttons of other plugins and their "All" entries.
+     *
+     * @param {Event} event
+     */
+    handleExtensionFilterClick(event) {
+        const trigger = event.target.closest('[data-action="filter-extension"], [data-action="filter-extension-all"]');
+        if (!trigger || !this.element.contains(trigger)) {
+            return;
+        }
+        event.preventDefault();
+        if (trigger.dataset.action === 'filter-extension-all') {
+            this.reactive.dispatch('clearExtensionFilterGroup', trigger.dataset.filterComponent);
+        } else {
+            this.reactive.dispatch('setExtensionFilter', trigger.dataset.filterId);
+        }
         this.afterFilterChange();
     }
 
@@ -1354,9 +1379,7 @@ class MonitorComponent extends BaseComponent {
             const status = chip.dataset.status;
             const isActive = status === activeStatus;
             chip.classList.remove('active', 'livequizmonitor-filter-chip', 'btn-sm');
-            chip.classList.toggle('btn-primary', isActive);
-            chip.classList.toggle('btn-outline-secondary', !isActive);
-            chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            this.setFilterButtonPressed(chip, isActive);
             const countEl = chip.querySelector(`[data-filter-count="${status}"]`);
             if (countEl && status in counts) {
                 countEl.textContent = counts[status];
@@ -1374,9 +1397,7 @@ class MonitorComponent extends BaseComponent {
             const isActive = ALL_FLAGS[flag]
                 ? !ALL_FLAGS[flag].some((groupFlag) => state.meta?.filters?.[groupFlag])
                 : !!state.meta?.filters?.[flag];
-            flagbtn.classList.toggle('btn-primary', isActive);
-            flagbtn.classList.toggle('btn-outline-secondary', !isActive);
-            flagbtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            this.setFilterButtonPressed(flagbtn, isActive);
             if (flag in flagcounts) {
                 const countEl = flagbtn.querySelector(`[data-filter-count="${flag}"]`);
                 if (countEl) {
@@ -1385,12 +1406,64 @@ class MonitorComponent extends BaseComponent {
             }
         });
 
+        this.renderExtensionFilters(state);
+
         this.element.querySelectorAll(this.selectors.SUMMARYTILE).forEach((tile) => {
             const status = tile.dataset.status;
             const isActive = status === activeStatus;
             tile.classList.remove('btn-primary', 'btn-outline-secondary');
             tile.classList.toggle('livequizmonitor-tile-active', isActive);
             tile.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    /**
+     * Show a filter button of the toolbar as selected or not, for sighted users and assistive technology.
+     *
+     * @param {HTMLElement} button Filter button
+     * @param {boolean} pressed Whether the filter is selected
+     */
+    setFilterButtonPressed(button, pressed) {
+        button.classList.toggle('btn-primary', pressed);
+        button.classList.toggle('btn-outline-secondary', !pressed);
+        button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    }
+
+    /**
+     * Sync pressed state and counts of the filter buttons of other plugins.
+     *
+     * The buttons are rendered once on page load; filters that are no longer declared keep their
+     * button until the page is reloaded and show a count of 0.
+     *
+     * @param {object} state Monitor state
+     */
+    renderExtensionFilters(state) {
+        const selected = new Set(state.meta?.filters?.extension ?? []);
+        const counts = new Map();
+        (state.meta?.extensionfiltergroups ?? []).forEach((group) => {
+            (group.filters ?? []).forEach((filter) => counts.set(filter.id, filter.count));
+        });
+
+        this.element.querySelectorAll(this.selectors.EXTENSIONFILTER).forEach((button) => {
+            const id = button.dataset.filterId;
+            this.setFilterButtonPressed(button, selected.has(id));
+            const countEl = button.querySelector(`[data-filter-count="${id}"]`);
+            if (countEl) {
+                countEl.textContent = counts.get(id) ?? 0;
+            }
+        });
+
+        this.element.querySelectorAll(this.selectors.EXTENSIONFILTERALL).forEach((button) => {
+            // "All" is pressed when no filter of its own group is selected.
+            const group = button.closest('[data-extension-group]');
+            const ids = [...(group?.querySelectorAll('[data-action="filter-extension"]') ?? [])]
+                .map((filterbutton) => filterbutton.dataset.filterId);
+            this.setFilterButtonPressed(button, !ids.some((id) => selected.has(id)));
+            // Every group has an "All" count, so look it up inside the button of this group.
+            const countEl = button.querySelector('[data-filter-count="extension-all"]');
+            if (countEl) {
+                countEl.textContent = state.meta?.totalstudents ?? 0;
+            }
         });
     }
 
@@ -1406,7 +1479,8 @@ class MonitorComponent extends BaseComponent {
         const state = this.getState();
         const hasCohort = state?.meta?.hasstudents;
         const filters = state?.meta?.filters ?? {search: '', status: 'all'};
-        const hasActiveFilter = filters.search !== '' || filters.status !== 'all';
+        const hasActiveFilter = filters.search !== '' || filters.status !== 'all'
+            || (filters.extension ?? []).length > 0;
         const visible = countVisible(state?.students ?? [], filters);
         const showEmpty = hasCohort && hasActiveFilter && visible === 0;
 

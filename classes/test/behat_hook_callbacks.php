@@ -27,16 +27,21 @@ namespace quiz_livequizmonitor\test;
 use core\output\pix_icon;
 use moodle_url;
 use quiz_livequizmonitor\hook\before_monitor_page_render;
+use quiz_livequizmonitor\hook\declare_filters;
 use quiz_livequizmonitor\hook\extend_rows;
 
 /**
  * Test callbacks that act like a plugin extending the monitor.
  *
  * Registered in db/hooks.php on Behat sites only, and inactive until a scenario sets
- * the config flag quiz_livequizmonitor/behatextensionfixture. The callbacks also serve as
- * a working example of the hooks (see README).
+ * the config flag quiz_livequizmonitor/behatextensionfixture. Setting the flag to 2 simulates
+ * changed plugin data (see is_changed()). The callbacks also serve as a working example of
+ * the hooks (see README).
  */
 class behat_hook_callbacks {
+    /** @var string Second component, to test filter groups of two plugins. */
+    protected const SECOND_COMPONENT = 'local_fixturetwo';
+
     /**
      * Whether the fixture is switched on for the current scenario.
      *
@@ -47,8 +52,40 @@ class behat_hook_callbacks {
     }
 
     /**
+     * Whether the scenario changed the plugin data: then the filter "Odd position" matches every
+     * student, the filter "No match" is not declared and the column shows "Changed N".
+     *
+     * @return bool
+     */
+    protected static function is_changed(): bool {
+        return (int) get_config('quiz_livequizmonitor', 'behatextensionfixture') === 2;
+    }
+
+    /**
+     * Declare the filter groups "Fixture filters" and "Second fixture".
+     *
+     * @param declare_filters $hook Hook.
+     */
+    public static function declare_filters(declare_filters $hook): void {
+        if (!self::is_enabled()) {
+            return;
+        }
+
+        $hook->add_filter_group('quiz_livequizmonitor', 'Fixture filters');
+        $hook->add_filter('quiz_livequizmonitor-first', 'First student');
+        $hook->add_filter('quiz_livequizmonitor-odd', 'Odd position', new pix_icon('i/flagged', ''));
+        if (!self::is_changed()) {
+            $hook->add_filter('quiz_livequizmonitor-none', 'No match');
+        }
+
+        $hook->add_filter_group(self::SECOND_COMPONENT, 'Second fixture');
+        $hook->add_filter(self::SECOND_COMPONENT . '-even', 'Even position');
+    }
+
+    /**
      * Add the column "Fixture value" with the student's position by name as value, highlight the
      * first student by name as warning and add a link to their profile, opening in a new tab.
+     * Mark the students matching the declared filters by their position.
      *
      * @param extend_rows $hook Hook.
      */
@@ -62,9 +99,28 @@ class behat_hook_callbacks {
         usort($students, static fn($a, $b): int => strcmp($a->fullname, $b->fullname));
 
         $hook->add_column('quiz_livequizmonitor-fixture', 'Fixture value');
+        $text = self::is_changed() ? 'Changed ' : 'Value ';
         foreach ($students as $index => $student) {
             $position = $index + 1;
-            $hook->set_value('quiz_livequizmonitor-fixture', $student->userid, 'Value ' . $position, $position);
+            $hook->set_value('quiz_livequizmonitor-fixture', $student->userid, $text . $position, $position);
+        }
+
+        // Only match filters that are declared for this quiz, as a plugin with per-quiz filters must.
+        $filters = $hook->get_filters();
+        $matches = [
+            'quiz_livequizmonitor-first' => static fn(int $position): bool => $position === 1,
+            'quiz_livequizmonitor-odd' => static fn(int $position): bool => self::is_changed() || $position % 2 === 1,
+            self::SECOND_COMPONENT . '-even' => static fn(int $position): bool => $position % 2 === 0,
+        ];
+        foreach ($matches as $id => $matcher) {
+            if (!isset($filters[$id])) {
+                continue;
+            }
+            foreach ($students as $index => $student) {
+                if ($matcher($index + 1)) {
+                    $hook->add_filter_match($id, $student->userid);
+                }
+            }
         }
 
         if ($students) {

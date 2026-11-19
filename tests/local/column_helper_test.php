@@ -149,4 +149,33 @@ final class column_helper_test extends advanced_testcase {
         $this->assertSame(['local_sebstatus-wifi'], column_helper::get_shown_columns((int) $user->id));
         $this->assertSame([], column_helper::get_hidden_columns((int) $user->id, $extensioncolumns));
     }
+
+    /**
+     * The search text of a cell is its visible text: no tags, decoded entities, lowercase, trimmed.
+     */
+    public function test_plain_text(): void {
+        $this->assertSame('lab-pc-17', column_helper::plain_text(' <b>Lab-PC-17</b> '));
+        $this->assertSame('a & b <c>', column_helper::plain_text('A &amp; B &lt;c&gt;'));
+        $this->assertSame('größe', column_helper::plain_text('<span title="x">GRÖßE</span>'));
+        $this->assertSame('', column_helper::plain_text('<img src="x.png" alt="icon">'));
+        // Line breaks and block elements separate words, inline elements do not.
+        $this->assertSame('lab pc room 3', column_helper::plain_text('<div>Lab PC</div><div>Room 3</div>'));
+        $this->assertSame('line 1 line 2', column_helper::plain_text("Line 1<br>Line 2<br />"));
+        $this->assertSame('a b', column_helper::plain_text("<p>A</p>\n\n<p>B</p>"));
+        $this->assertSame('labpc', column_helper::plain_text('Lab<b>PC</b>'));
+        // Every run of whitespace, also non-breaking spaces, is one space.
+        $this->assertSame('17 %', column_helper::plain_text('17&nbsp;%'));
+        $this->assertSame('17 %', column_helper::plain_text("17\u{00A0}%"));
+        $this->assertSame('a b', column_helper::plain_text("a \t\n  b"));
+    }
+
+    /**
+     * Extension column ids need "<component>-<name>" and nothing after it, not even a newline.
+     */
+    public function test_is_extension_column_id(): void {
+        $this->assertTrue(column_helper::is_extension_column_id('local_sebstatus-battery'));
+        $this->assertFalse(column_helper::is_extension_column_id("local_sebstatus-battery\n"));
+        $this->assertFalse(column_helper::is_extension_column_id('local_sebstatus-Battery'));
+        $this->assertFalse(column_helper::is_extension_column_id('battery'));
+    }
 }

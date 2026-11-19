@@ -36,7 +36,19 @@
             "useroverrideactive": false,
             "groupoverridelabel": "Group",
             "groupoverridecount": 1,
-            "groupoverrideactive": false
+            "groupoverrideactive": false,
+            "extensionfiltergroups": [
+                {
+                    "component": "local_sebstatus",
+                    "label": "Safe Exam Browser",
+                    "labelsep": ": ",
+                    "alllabel": "All",
+                    "allcount": 3,
+                    "filters": [
+                        {"id": "local_sebstatus-lowbattery", "label": "Low battery", "iconkey": "", "iconcomponent": "", "count": 1}
+                    ]
+                }
+            ]
         }
     }
 }}
@@ -118,5 +130,8 @@
             </div>
         </div>
         {{/filter.canviewoverrides}}
+        {{#filter.extensionfiltergroups}}
+        {{> quiz_livequizmonitor/extension_filter_group}}
+        {{/filter.extensionfiltergroups}}
     </div>
 </div>

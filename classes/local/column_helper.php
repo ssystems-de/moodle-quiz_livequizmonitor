@@ -43,8 +43,11 @@ class column_helper {
     /** @var string Name of the user preference that stores default-hidden extension columns the user showed. */
     const SHOWN_PREFERENCE_NAME = 'quiz_livequizmonitor_showncolumns';
 
-    /** @var string Pattern of extension column ids: "<component>-<name>". */
-    const EXTENSION_COLUMN_PATTERN = '/^[a-z][a-z0-9_]*-[a-z0-9]+$/';
+    /**
+     * @var string Pattern of extension column ids: "<component>-<name>".
+     * Ends with \z, because "$" would accept a trailing newline.
+     */
+    const EXTENSION_COLUMN_PATTERN = '/^[a-z][a-z0-9_]*-[a-z0-9]+\z/';
 
     /**
      * Ordered registry of columns known to the monitor table.
@@ -94,6 +97,24 @@ class column_helper {
      */
     public static function is_extension_column_id(string $columnid): bool {
         return (bool) preg_match(self::EXTENSION_COLUMN_PATTERN, $columnid);
+    }
+
+    /**
+     * Visible plain text of an extension cell, lowercased, as used by the search.
+     *
+     * Markup is removed and entities are decoded, so only the text the user sees is searched. Line
+     * breaks and block elements separate words, and every run of whitespace, also non-breaking
+     * spaces, becomes one space: "17&nbsp;%" is found by "17 %".
+     *
+     * @param string $html Cell display HTML.
+     * @return string
+     */
+    public static function plain_text(string $html): string {
+        // Without this, "<div>Lab PC</div><div>Room 3</div>" would become "lab pcroom 3".
+        $html = preg_replace('~<(?:br|hr|/?(?:p|div|li|dt|dd|tr|td|th|h[1-6]|blockquote|pre))\b[^>]*>~i', ' ', $html);
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES, 'UTF-8');
+        $text = preg_replace('/[\s\x{00A0}\x{202F}]+/u', ' ', $text) ?? $text;
+        return \core_text::strtolower(trim($text));
     }
 
     /**

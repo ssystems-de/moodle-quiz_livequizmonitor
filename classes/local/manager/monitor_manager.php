@@ -35,6 +35,7 @@ use core_user\fields;
 use mod_quiz\access_manager;
 use mod_quiz\quiz_attempt;
 use mod_quiz\quiz_settings;
+use quiz_livequizmonitor\hook\declare_filters;
 use quiz_livequizmonitor\hook\extend_rows;
 use quiz_livequizmonitor\local\column_helper;
 use stdClass;
@@ -227,23 +228,33 @@ class monitor_manager {
             );
         }
 
-        // Let other plugins add columns, row highlights and row actions. This runs before the
-        // sort, so rows can be sorted by extension columns like by built-in ones.
+        // Let other plugins add columns, row highlights, row actions and filters. This runs before
+        // the sort, so rows can be sorted by extension columns like by built-in ones.
         $extensioncolumns = [];
+        $extensionfiltergroups = [];
         if ($withextensions) {
-            $hook = new extend_rows($course, $cm, $quiz, $groupid, $rows);
+            // Filters are declared first, on every state build: extend_rows needs them to check the
+            // matches, and the declaration is cheap because it gets no student data.
+            $filters = new declare_filters($course, $cm, $quiz);
+            \core\di::get(\core\hook\manager::class)->dispatch($filters);
+
+            $hook = new extend_rows($course, $cm, $quiz, $groupid, $rows, $filters);
             \core\di::get(\core\hook\manager::class)->dispatch($hook);
 
             $extensioncolumns = $hook->get_columns();
             $cells = $hook->get_extension_cells();
             $highlights = $hook->get_highlights();
             $actions = $hook->get_actions();
+            $matches = $hook->get_filter_matches();
             foreach ($rows as $row) {
                 // The web service and the templates expect a list.
                 $row->extensioncells = array_values($cells[$row->userid] ?? []);
                 $row->highlight = $highlights[$row->userid] ?? '';
                 $row->extensionactions = $actions[$row->userid] ?? [];
+                $row->extensionfilters = $matches[$row->userid] ?? [];
+                $row->searchtext = self::add_extension_searchtext($row->searchtext, $row->extensioncells);
             }
+            $extensionfiltergroups = self::count_filter_matches($filters->get_filter_groups(), $rows);
         }
 
         self::sort_student_rows($rows, $sortcolumn, $sortdirection);
@@ -352,6 +363,7 @@ class monitor_manager {
             'useroverridecount' => $useroverridecount,
             'groupoverridecount' => $groupoverridecount,
             'extensioncolumns' => $extensioncolumns,
+            'extensionfiltergroups' => $extensionfiltergroups,
         ];
 
         return $state;
@@ -745,6 +757,7 @@ class monitor_manager {
             'extensioncells' => [],
             'highlight' => '',
             'extensionactions' => [],
+            'extensionfilters' => [],
         ];
     }
 
@@ -794,6 +807,55 @@ class monitor_manager {
             return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
         return sprintf('%02d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Add the visible text of a row's extension cells to its search text.
+     *
+     * Only the text the user sees is searched, not markup or sort values. Hidden columns are
+     * searched too, like the email when its column is hidden.
+     *
+     * @param string $searchtext Search text of the row (lowercase).
+     * @param array[] $cells Extension cells of the row.
+     * @return string
+     */
+    protected static function add_extension_searchtext(string $searchtext, array $cells): string {
+        $parts = [$searchtext];
+        foreach ($cells as $cell) {
+            $text = column_helper::plain_text($cell['display']);
+            if ($text !== '') {
+                $parts[] = $text;
+            }
+        }
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Add the number of matching students to each declared filter.
+     *
+     * Each count only considers that one filter, independent of the other filters the user
+     * selected, like the counts of the built-in filters.
+     *
+     * @param array[] $groups Filter groups from declare_filters::get_filter_groups().
+     * @param stdClass[] $rows Student rows with extensionfilters.
+     * @return array[] The groups, with 'count' added to each filter.
+     */
+    protected static function count_filter_matches(array $groups, array $rows): array {
+        $counts = [];
+        foreach ($rows as $row) {
+            foreach ($row->extensionfilters as $id) {
+                $counts[$id] = ($counts[$id] ?? 0) + 1;
+            }
+        }
+
+        foreach ($groups as &$group) {
+            foreach ($group['filters'] as &$filter) {
+                $filter['count'] = $counts[$filter['id']] ?? 0;
+            }
+            unset($filter);
+        }
+        unset($group);
+        return $groups;
     }
 
     /**

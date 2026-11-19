@@ -26,6 +26,10 @@ defined('MOODLE_INTERNAL') || die();
 
 $callbacks = [
     [
+        'hook' => \quiz_livequizmonitor\hook\declare_filters::class,
+        'callback' => [\quiz_livequizmonitor\tests\extension_callbacks::class, 'declare_filters'],
+    ],
+    [
         'hook' => \quiz_livequizmonitor\hook\extend_rows::class,
         'callback' => [\quiz_livequizmonitor\tests\extension_callbacks::class, 'extend_rows'],
     ],

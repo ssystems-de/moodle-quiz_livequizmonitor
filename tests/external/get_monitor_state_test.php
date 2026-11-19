@@ -346,4 +346,110 @@ final class get_monitor_state_test extends advanced_testcase {
         $this->assertSame('', $result['students'][0]['highlight']);
         $this->assertSame([], $result['students'][0]['extensionactions']);
     }
+
+    /**
+     * Declared filters with their counts and the matches per student are part of the poll payload.
+     */
+    public function test_execute_includes_extension_filters(): void {
+        $this->resetAfterTest();
+        \quiz_livequizmonitor\tests\extension_callbacks::reset();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([
+            'quiz_livequizmonitor' => __DIR__ . '/../fixtures/extension_hooks.php',
+        ]));
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $first = $generator->create_and_enrol($course, 'student', ['firstname' => 'Anna']);
+        $second = $generator->create_and_enrol($course, 'student', ['firstname' => 'Bert']);
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+        $quiz = $generator->get_plugin_generator('mod_quiz')->create_instance(['course' => $course->id]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        \quiz_livequizmonitor\tests\extension_callbacks::$config['quiz_livequizmonitor'] = [
+            'groups' => [['quiz_livequizmonitor', 'Fixture filters']],
+            'filters' => [['quiz_livequizmonitor-odd', 'Odd', true]],
+            'matches' => [['quiz_livequizmonitor-odd', (int) $first->id]],
+        ];
+
+        $this->setUser($teacher);
+        $result = get_monitor_state::execute($cm->id, 0, 'status', 'asc');
+        $result = external_api::clean_returnvalue(get_monitor_state::execute_returns(), $result);
+
+        $this->assertSame([
+            [
+                'component' => 'quiz_livequizmonitor',
+                'label' => 'Fixture filters',
+                'filters' => [
+                    ['id' => 'quiz_livequizmonitor-odd', 'label' => 'Odd', 'iconkey' => 'i/warning',
+                        'iconcomponent' => 'moodle', 'count' => 1],
+                ],
+            ],
+        ], $result['extensionfiltergroups']);
+        $bystudent = array_column($result['students'], null, 'userid');
+        $this->assertSame(['quiz_livequizmonitor-odd'], $bystudent[$first->id]['extensionfilters']);
+        $this->assertSame([], $bystudent[$second->id]['extensionfilters']);
+    }
+
+    /**
+     * Values and labels of other plugins may contain "<": the response validation accepts them.
+     *
+     * PARAM_TEXT rejects text like "<20%", so a single such value failed every poll.
+     */
+    public function test_execute_accepts_less_than_sign_in_extension_data(): void {
+        $this->resetAfterTest();
+        \quiz_livequizmonitor\tests\extension_callbacks::reset();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([
+            'quiz_livequizmonitor' => __DIR__ . '/../fixtures/extension_hooks.php',
+        ]));
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $student = $generator->create_and_enrol($course, 'student');
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+        $quiz = $generator->get_plugin_generator('mod_quiz')->create_instance(['course' => $course->id]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        \quiz_livequizmonitor\tests\extension_callbacks::$config['quiz_livequizmonitor'] = [
+            'columns' => [['quiz_livequizmonitor-fixture', 'Signal <50%', false]],
+            'values' => [['quiz_livequizmonitor-fixture', (int) $student->id, 'Battery <20%', null, false]],
+            'actions' => [[(int) $student->id, 'Log <today>', '/user/profile.php', false, false]],
+            'groups' => [['quiz_livequizmonitor', 'SEB <demo>']],
+            'filters' => [['quiz_livequizmonitor-low', 'Battery <20%', false]],
+            'matches' => [['quiz_livequizmonitor-low', (int) $student->id]],
+        ];
+
+        $this->setUser($teacher);
+        $result = get_monitor_state::execute($cm->id, 0, 'status', 'asc');
+        $result = external_api::clean_returnvalue(get_monitor_state::execute_returns(), $result);
+
+        $this->assertSame('Signal <50%', $result['extensioncolumns'][0]['label']);
+        $this->assertSame('SEB <demo>', $result['extensionfiltergroups'][0]['label']);
+        $this->assertSame('Battery <20%', $result['extensionfiltergroups'][0]['filters'][0]['label']);
+        $row = $result['students'][0];
+        $this->assertSame('Battery &lt;20%', $row['extensioncells'][0]['display']);
+        $this->assertStringEndsWith(' battery <20%', $row['searchtext']);
+        $this->assertSame('Log <today>', $row['extensionactions'][0]['label']);
+    }
+
+    /**
+     * Without callbacks the filter fields are empty lists.
+     */
+    public function test_execute_without_extension_filters(): void {
+        $this->resetAfterTest();
+        \core\di::set(\core\hook\manager::class, \core\hook\manager::phpunit_get_instance([]));
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $generator->create_and_enrol($course, 'student');
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+        $quiz = $generator->get_plugin_generator('mod_quiz')->create_instance(['course' => $course->id]);
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id, $course->id, false, MUST_EXIST);
+
+        $this->setUser($teacher);
+        $result = get_monitor_state::execute($cm->id, 0, 'status', 'asc');
+        $result = external_api::clean_returnvalue(get_monitor_state::execute_returns(), $result);
+
+        $this->assertSame([], $result['extensionfiltergroups']);
+        $this->assertSame([], $result['students'][0]['extensionfilters']);
+    }
 }

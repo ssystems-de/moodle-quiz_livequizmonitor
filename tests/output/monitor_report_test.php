@@ -288,4 +288,53 @@ final class monitor_report_test extends advanced_testcase {
         $this->assertContains('local_sebstatus-wifi', json_decode($context['hiddencolumnsjson']));
         $this->assertNotContains('local_sebstatus-battery', json_decode($context['hiddencolumnsjson']));
     }
+
+    /**
+     * Each filter group of other plugins is exported for the toolbar, with "All" selected.
+     */
+    public function test_export_extension_filter_groups(): void {
+        $this->resetAfterTest();
+        $state = $this->get_state_with_students();
+        $this->assertSame([], $this->export($state)['filter']['extensionfiltergroups']);
+
+        $state->extensionfiltergroups = [
+            [
+                'component' => 'local_sebstatus',
+                'label' => 'Safe Exam Browser',
+                'filters' => [
+                    ['id' => 'local_sebstatus-lowbattery', 'label' => 'Low battery', 'iconkey' => 'i/warning',
+                        'iconcomponent' => 'moodle', 'count' => 2],
+                ],
+            ],
+        ];
+        $context = $this->export($state);
+
+        $this->assertSame([
+            [
+                'component' => 'local_sebstatus',
+                'label' => 'Safe Exam Browser',
+                'filters' => [
+                    ['id' => 'local_sebstatus-lowbattery', 'label' => 'Low battery', 'iconkey' => 'i/warning',
+                        'iconcomponent' => 'moodle', 'count' => 2],
+                ],
+                'labelsep' => get_string('labelsep', 'langconfig'),
+                'alllabel' => get_string('filter:all', 'quiz_livequizmonitor'),
+                'allcount' => $state->totalstudents,
+            ],
+        ], $context['filter']['extensionfiltergroups']);
+
+        // The group is rendered after the overrides group, with "All" pressed.
+        global $PAGE;
+        $html = $PAGE->get_renderer('quiz_livequizmonitor')->render_from_template(
+            'quiz_livequizmonitor/filter_toolbar',
+            $context
+        );
+        $this->assertStringContainsString('data-extension-group="local_sebstatus"', $html);
+        $this->assertStringContainsString('data-filter-id="local_sebstatus-lowbattery"', $html);
+        $this->assertGreaterThan(strpos($html, 'data-filter-group="overrides"'), strpos($html, 'data-extension-group'));
+        $this->assertMatchesRegularExpression(
+            '/data-action="filter-extension-all"\s+data-filter-component="local_sebstatus"\s+aria-pressed="true"/',
+            $html
+        );
+    }
 }
