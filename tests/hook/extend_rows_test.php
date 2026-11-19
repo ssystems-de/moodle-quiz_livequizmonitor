@@ -34,6 +34,7 @@ use quiz_livequizmonitor\tests\extension_callbacks_second;
  * Tests for the hook dispatch and the extension data in the monitor state.
  *
  * @covers \quiz_livequizmonitor\hook\extend_rows
+ * @covers \quiz_livequizmonitor\hook\declare_filters
  * @covers \quiz_livequizmonitor\local\manager\monitor_manager
  */
 final class extend_rows_test extends advanced_testcase {
@@ -154,11 +155,13 @@ final class extend_rows_test extends advanced_testcase {
         $state = $this->get_state();
 
         $this->assertSame([], $state->extensioncolumns);
+        $this->assertSame([], $state->extensionfiltergroups);
         $this->assertCount(3, $state->students);
         foreach ($state->students as $row) {
             $this->assertSame([], $row->extensioncells);
             $this->assertSame('', $row->highlight);
             $this->assertSame([], $row->extensionactions);
+            $this->assertSame([], $row->extensionfilters);
         }
     }
 
@@ -292,7 +295,7 @@ final class extend_rows_test extends advanced_testcase {
     }
 
     /**
-     * The bulk extend lookup does not run the extension hooks.
+     * The bulk extend lookup does not run the extension hooks, not even the filter declaration.
      */
     public function test_extendable_userids_skip_hooks(): void {
         $this->create_quiz_with_students();
@@ -366,6 +369,10 @@ final class extend_rows_test extends advanced_testcase {
                 static fn(extend_rows $hook, int $userid) => $hook->add_column('fixture', 'Fixture'),
                 "Invalid live quiz monitor column id 'fixture'",
             ],
+            'column id with a trailing newline' => [
+                static fn(extend_rows $hook, int $userid) => $hook->add_column("quiz_livequizmonitor-fixture\n", 'Fixture'),
+                "Invalid live quiz monitor column id 'quiz_livequizmonitor-fixture",
+            ],
             'duplicate column' => [
                 static function (extend_rows $hook, int $userid): void {
                     $hook->add_column('quiz_livequizmonitor-fixture', 'Fixture');
@@ -388,6 +395,14 @@ final class extend_rows_test extends advanced_testcase {
             'unknown severity for a user not shown' => [
                 static fn(extend_rows $hook, int $userid) => $hook->set_highlight($userid + 1000, 'critical'),
                 "Unknown live quiz monitor row severity 'critical'",
+            ],
+            'match for an undeclared filter' => [
+                static fn(extend_rows $hook, int $userid) => $hook->add_filter_match('quiz_livequizmonitor-odd', $userid),
+                "Live quiz monitor filter 'quiz_livequizmonitor-odd' is not declared",
+            ],
+            'match for an undeclared filter and a user not shown' => [
+                static fn(extend_rows $hook, int $userid) => $hook->add_filter_match('quiz_livequizmonitor-odd', $userid + 1000),
+                "Live quiz monitor filter 'quiz_livequizmonitor-odd' is not declared",
             ],
         ];
     }
@@ -565,5 +580,243 @@ final class extend_rows_test extends advanced_testcase {
             ],
         ], $rows[$anna]->extensionactions);
         $this->assertSame([], $rows[$bert]->extensionactions);
+    }
+
+    /**
+     * Declare the fixture filters: two in the first component, one in the second.
+     */
+    private function declare_fixture_filters(): void {
+        extension_callbacks::$config[self::FIRST]['groups'] = [[self::FIRST, 'Fixture filters']];
+        extension_callbacks::$config[self::FIRST]['filters'] = [
+            ['quiz_livequizmonitor-odd', 'Odd', true],
+            ['quiz_livequizmonitor-none', 'None', false],
+        ];
+        extension_callbacks::$config[self::SECOND]['groups'] = [[self::SECOND, 'Second plugin']];
+        extension_callbacks::$config[self::SECOND]['filters'] = [['local_fixturetwo-even', 'Even', false]];
+    }
+
+    /**
+     * The declaration hook runs once per state build and callback, before extend_rows, with the quiz.
+     */
+    public function test_filters_declared_once_per_state(): void {
+        $this->create_quiz_with_students();
+
+        $this->get_state();
+
+        $calls = extension_callbacks::$calls[declare_filters::class];
+        $this->assertSame([self::FIRST, self::SECOND], array_column($calls, 'component'));
+        $this->assertSame([(int) $this->quiz->id, (int) $this->quiz->id], array_column($calls, 'quizid'));
+        $this->assertSame(1, $this->count_calls(self::FIRST));
+    }
+
+    /**
+     * extend_rows hands out the declared filters, and none without a declaration.
+     */
+    public function test_get_filters(): void {
+        $this->create_quiz_with_students();
+        $this->assertSame([], $this->create_hook()->get_filters());
+
+        $filters = new declare_filters($this->course, $this->cm, $this->quiz);
+        $filters->add_filter_group(self::FIRST, 'Fixture filters');
+        $filters->add_filter('quiz_livequizmonitor-odd', 'Odd');
+        $hook = new extend_rows($this->course, $this->cm, $this->quiz, 0, [], $filters);
+
+        $this->assertSame(
+            ['quiz_livequizmonitor-odd' => ['id' => 'quiz_livequizmonitor-odd', 'label' => 'Odd']],
+            $hook->get_filters()
+        );
+    }
+
+    /**
+     * Matches are stored per row in declaration order, and each filter counts its own matches (FR-013).
+     */
+    public function test_filter_matches_and_counts(): void {
+        $this->create_quiz_with_students();
+        [$anna, $bert, $carl] = array_map(static fn($student): int => (int) $student->id, $this->students);
+        $this->declare_fixture_filters();
+        // Matched against the declaration order: "none" is declared after "odd", but never matched.
+        extension_callbacks::$config[self::SECOND]['matches'] = [['local_fixturetwo-even', $bert]];
+        extension_callbacks::$config[self::FIRST]['matches'] = [
+            ['quiz_livequizmonitor-odd', $carl],
+            ['quiz_livequizmonitor-odd', $anna],
+        ];
+
+        $state = $this->get_state();
+        $rows = $this->rows_by_userid($state);
+
+        $this->assertSame(['quiz_livequizmonitor-odd'], $rows[$anna]->extensionfilters);
+        $this->assertSame(['local_fixturetwo-even'], $rows[$bert]->extensionfilters);
+        $this->assertSame(['quiz_livequizmonitor-odd'], $rows[$carl]->extensionfilters);
+        $this->assertSame([
+            [
+                'component' => self::FIRST,
+                'label' => 'Fixture filters',
+                'filters' => [
+                    ['id' => 'quiz_livequizmonitor-odd', 'label' => 'Odd', 'iconkey' => 'i/warning',
+                        'iconcomponent' => 'moodle', 'count' => 2],
+                    ['id' => 'quiz_livequizmonitor-none', 'label' => 'None', 'iconkey' => '',
+                        'iconcomponent' => '', 'count' => 0],
+                ],
+            ],
+            [
+                'component' => self::SECOND,
+                'label' => 'Second plugin',
+                'filters' => [
+                    ['id' => 'local_fixturetwo-even', 'label' => 'Even', 'iconkey' => '', 'iconcomponent' => '',
+                        'count' => 1],
+                ],
+            ],
+        ], $state->extensionfiltergroups);
+    }
+
+    /**
+     * A plugin may match filters of other plugins; one student may match several filters.
+     */
+    public function test_filter_matches_in_declaration_order(): void {
+        $this->create_quiz_with_students();
+        $anna = (int) $this->students[0]->id;
+        $this->declare_fixture_filters();
+        extension_callbacks::$config[self::SECOND]['matches'] = [
+            ['local_fixturetwo-even', $anna],
+            ['quiz_livequizmonitor-none', $anna],
+            ['quiz_livequizmonitor-odd', $anna],
+        ];
+
+        $rows = $this->rows_by_userid($this->get_state());
+
+        $this->assertSame(
+            ['quiz_livequizmonitor-odd', 'quiz_livequizmonitor-none', 'local_fixturetwo-even'],
+            $rows[$anna]->extensionfilters
+        );
+    }
+
+    /**
+     * Matches for dropped filters, for users not shown and duplicate matches are ignored silently.
+     */
+    public function test_silent_filter_matches(): void {
+        $this->create_quiz_with_students();
+        $anna = (int) $this->students[0]->id;
+        $outsider = (int) $this->getDataGenerator()->create_user()->id;
+        $this->declare_fixture_filters();
+        extension_callbacks::$config[self::FIRST]['filters'][] = ['quiz_livequizmonitor-empty', '', false];
+        extension_callbacks::$config[self::FIRST]['matches'] = [
+            ['quiz_livequizmonitor-empty', $anna],
+            ['quiz_livequizmonitor-odd', $outsider],
+            ['quiz_livequizmonitor-odd', $anna],
+            ['quiz_livequizmonitor-odd', $anna],
+        ];
+
+        $state = $this->get_state();
+        // Only the empty label triggers debugging.
+        $this->assertDebuggingCalledCount(1);
+
+        $this->assertSame(['quiz_livequizmonitor-odd'], $this->rows_by_userid($state)[$anna]->extensionfilters);
+        $this->assertSame(1, $state->extensionfiltergroups[0]['filters'][0]['count']);
+        $this->assertCount(2, $state->extensionfiltergroups[0]['filters']);
+    }
+
+    /**
+     * A match for a filter that is not declared for this quiz reaches the monitor as an exception.
+     */
+    public function test_undeclared_filter_match_reaches_monitor(): void {
+        $this->create_quiz_with_students();
+        extension_callbacks::$config[self::FIRST]['matches'] = [['quiz_livequizmonitor-odd', (int) $this->students[0]->id]];
+
+        $this->expectException(\coding_exception::class);
+        $this->expectExceptionMessage("Live quiz monitor filter 'quiz_livequizmonitor-odd' is not declared");
+        $this->get_state();
+    }
+
+    /**
+     * Every state build uses the current data: matches, counts and declarations can change.
+     */
+    public function test_filters_follow_changed_data(): void {
+        $this->create_quiz_with_students();
+        [$anna, $bert] = [(int) $this->students[0]->id, (int) $this->students[1]->id];
+        $this->declare_fixture_filters();
+        extension_callbacks::$config[self::FIRST]['matches'] = [['quiz_livequizmonitor-odd', $anna]];
+
+        $first = $this->get_state();
+        $this->assertSame(1, $first->extensionfiltergroups[0]['filters'][0]['count']);
+
+        // The data changes: Bert matches too, and "none" is no longer declared.
+        extension_callbacks::$config[self::FIRST]['filters'] = [['quiz_livequizmonitor-odd', 'Odd', true]];
+        extension_callbacks::$config[self::FIRST]['matches'][] = ['quiz_livequizmonitor-odd', $bert];
+        $second = $this->get_state();
+
+        $rows = $this->rows_by_userid($second);
+        $this->assertSame(['quiz_livequizmonitor-odd'], $rows[$bert]->extensionfilters);
+        $this->assertSame(2, $second->extensionfiltergroups[0]['filters'][0]['count']);
+        $this->assertSame(
+            ['quiz_livequizmonitor-odd'],
+            array_column($second->extensionfiltergroups[0]['filters'], 'id')
+        );
+    }
+
+    /**
+     * Without the extension hooks, the filter fields are empty.
+     */
+    public function test_filter_fields_without_extensions(): void {
+        $this->create_quiz_with_students();
+        $this->declare_fixture_filters();
+
+        $state = monitor_manager::get_state($this->course, $this->cm, $this->quiz, 0, 'status', 'asc', false);
+
+        $this->assertSame([], $state->extensionfiltergroups);
+        foreach ($state->students as $row) {
+            $this->assertSame([], $row->extensionfilters);
+        }
+        $this->assertSame([], extension_callbacks::$calls);
+    }
+
+    /**
+     * The visible text of extension cells is added to the search text, not markup or sort values (FR-020, FR-021).
+     */
+    public function test_searchtext_contains_extension_cell_text(): void {
+        $this->create_quiz_with_students();
+        [$anna, $bert] = [(int) $this->students[0]->id, (int) $this->students[1]->id];
+        $before = $this->rows_by_userid($this->get_state());
+        extension_callbacks::$config[self::FIRST] = [
+            'columns' => [
+                ['quiz_livequizmonitor-device', 'Device', true],
+                ['quiz_livequizmonitor-room', 'Room', false],
+            ],
+            'values' => [
+                ['quiz_livequizmonitor-device', $anna, '<b>Lab-PC-17</b>', 424242, true],
+                ['quiz_livequizmonitor-room', $anna, 'Room B', null, false],
+                ['quiz_livequizmonitor-room', $bert, '', null, false],
+            ],
+        ];
+
+        $rows = $this->rows_by_userid($this->get_state());
+
+        $this->assertSame($before[$anna]->searchtext . ' lab-pc-17 room b', $rows[$anna]->searchtext);
+        $this->assertStringNotContainsString('<b>', $rows[$anna]->searchtext);
+        $this->assertStringNotContainsString('424242', $rows[$anna]->searchtext);
+        // An empty cell adds nothing.
+        $this->assertSame($before[$bert]->searchtext, $rows[$bert]->searchtext);
+    }
+
+    /**
+     * Callbacks without values leave the search text unchanged; changed values replace the old ones (FR-023).
+     */
+    public function test_searchtext_follows_extension_values(): void {
+        $this->create_quiz_with_students();
+        $anna = (int) $this->students[0]->id;
+        $this->use_hook_files([]);
+        $plain = $this->rows_by_userid($this->get_state())[$anna]->searchtext;
+        $this->use_hook_files([self::FIRST => __DIR__ . '/../fixtures/extension_hooks.php']);
+        $this->assertSame($plain, $this->rows_by_userid($this->get_state())[$anna]->searchtext);
+
+        extension_callbacks::$config[self::FIRST] = [
+            'columns' => [['quiz_livequizmonitor-device', 'Device', false]],
+            'values' => [['quiz_livequizmonitor-device', $anna, 'Lab-PC-17', null, false]],
+        ];
+        $this->assertSame($plain . ' lab-pc-17', $this->rows_by_userid($this->get_state())[$anna]->searchtext);
+
+        extension_callbacks::$config[self::FIRST]['values'] = [['quiz_livequizmonitor-device', $anna, 'Lab-PC-18', null, false]];
+        $searchtext = $this->rows_by_userid($this->get_state())[$anna]->searchtext;
+        $this->assertStringContainsString('lab-pc-18', $searchtext);
+        $this->assertStringNotContainsString('lab-pc-17', $searchtext);
     }
 }

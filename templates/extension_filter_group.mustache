@@ -1,0 +1,60 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template quiz_livequizmonitor/extension_filter_group
+
+    Toolbar group with the filters of one other plugin (hooks quiz_livequizmonitor\hook\declare_filters
+    and extend_rows). Included by filter_toolbar once per group. Like the status filter, one filter
+    of the group can be selected; "All" clears it. Filters of different groups combine with AND. The
+    browser only updates the pressed state and the counts; groups and filters change after a page
+    reload.
+
+    Example context (json):
+    {
+        "component": "local_sebstatus",
+        "label": "Safe Exam Browser",
+        "labelsep": ": ",
+        "alllabel": "All",
+        "allcount": 12,
+        "filters": [
+            {"id": "local_sebstatus-lowbattery", "label": "Low battery", "iconkey": "i/warning", "iconcomponent": "core", "count": 2},
+            {"id": "local_sebstatus-weaknetwork", "label": "Weak network", "iconkey": "", "iconcomponent": "", "count": 0}
+        ]
+    }
+}}
+<div class="livequizmonitor-filter-group" data-filter-group="extension" data-extension-group="{{component}}">
+    <span class="livequizmonitor-filter-group-label">{{label}}{{labelsep}}</span>
+    <div class="livequizmonitor-filter-group-controls">
+        {{#filters}}
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-action="filter-extension"
+                data-filter-id="{{id}}"
+                aria-pressed="false">
+            {{#iconkey}}{{#pix}}{{iconkey}}, {{iconcomponent}}{{/pix}}{{/iconkey}}
+            {{label}} (<span data-filter-count="{{id}}">{{count}}</span>)
+        </button>
+        {{/filters}}
+        <button type="button"
+                class="btn btn-primary"
+                data-action="filter-extension-all"
+                data-filter-component="{{component}}"
+                aria-pressed="true">
+            {{alllabel}} (<span data-filter-count="extension-all">{{allcount}}</span>)
+        </button>
+    </div>
+</div>

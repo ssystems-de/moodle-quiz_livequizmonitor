@@ -72,14 +72,17 @@ Typical statuses include not started, in progress, idle (no recent attempt activ
 Extending the monitor
 ---------------------
 
-Other plugins can add information and links to the Live Monitor without patching it, using the Moodle Hooks API. All hooks are listed under *Site administration > Development > Hooks overview* (tag `quiz_livequizmonitor`).
+Other plugins can add information, filters and links to the Live Monitor without patching it, using the Moodle Hooks API. All hooks are listed under *Site administration > Development > Hooks overview* (tag `quiz_livequizmonitor`).
 
 | Hook | Runs | Lets you |
 |------|------|----------|
-| `\quiz_livequizmonitor\hook\extend_rows` | page load and every poll | add columns with a value per student, highlight rows as `info`, `warning` or `danger`, and add links to the per-student actions menu |
+| `\quiz_livequizmonitor\hook\declare_filters` | page load and every poll, before `extend_rows` | declare filters for the filter toolbar, in one group per plugin |
+| `\quiz_livequizmonitor\hook\extend_rows` | page load and every poll | add columns with a value per student, highlight rows as `info`, `warning` or `danger`, add links to the per-student actions menu, and mark which students match your filters |
 | `\quiz_livequizmonitor\hook\before_monitor_page_render` | page load | load your own JavaScript on the monitor page |
 
 `extend_rows` gives you `get_course()`, `get_cm()`, `get_quiz()`, `get_context()`, `get_groupid()`, `get_userids()` and `get_student_rows()`. The students are only those the current user may see (groups and access restrictions are applied). `get_student_rows()` returns the data of the monitor rows as the monitor computed it (no user records), so you can e.g. fill your column only for idle students. Available fields: `userid`, `fullname`, `email` (empty if the user may not see it), `status`, `attemptid`, `attemptendat`, `timeremaining`, `progressanswered`, `progresstotal`.
+
+`declare_filters` gives you `get_course()`, `get_cm()`, `get_quiz()` and `get_context()`, but no students: declare the filters that make sense for this quiz, e.g. only for quizzes that require Safe Exam Browser. In `extend_rows`, `get_filters()` returns the filters declared for this quiz.
 
 ### Minimal example
 
@@ -90,6 +93,10 @@ $callbacks = [
         'hook' => \quiz_livequizmonitor\hook\extend_rows::class,
         'callback' => [\local_sebstatus\monitor_callbacks::class, 'extend_rows'],
     ],
+    [
+        'hook' => \quiz_livequizmonitor\hook\declare_filters::class,
+        'callback' => [\local_sebstatus\monitor_callbacks::class, 'declare_filters'],
+    ],
 ];
 ```
 
@@ -98,13 +105,27 @@ $callbacks = [
 namespace local_sebstatus;
 
 class monitor_callbacks {
+    public static function declare_filters(\quiz_livequizmonitor\hook\declare_filters $hook): void {
+        if (!store::quiz_uses_seb($hook->get_quiz())) {
+            return;
+        }
+        $hook->add_filter_group('local_sebstatus', get_string('pluginname', 'local_sebstatus'));
+        $hook->add_filter('local_sebstatus-lowbattery', get_string('lowbattery', 'local_sebstatus'),
+            new \core\output\pix_icon('i/warning', ''));
+    }
+
     public static function extend_rows(\quiz_livequizmonitor\hook\extend_rows $hook): void {
         $hook->add_column('local_sebstatus-battery', get_string('battery', 'local_sebstatus'));
-        // One query for all students of this request, used for the column, highlights and actions.
+        // The filter is only declared for some quizzes: match it only where it is declared.
+        $lowbattery = isset($hook->get_filters()['local_sebstatus-lowbattery']);
+        // One query for all students of this request, used for the column, highlights, actions and filters.
         foreach (store::get_battery_levels($hook->get_userids()) as $userid => $level) {
             $hook->set_value('local_sebstatus-battery', $userid, $level . ' %', $level);
             if ($level < 15) {
                 $hook->set_highlight($userid, $hook::SEVERITY_DANGER);
+            }
+            if ($lowbattery && $level < 20) {
+                $hook->add_filter_match('local_sebstatus-lowbattery', $userid);
             }
             $hook->add_action($userid, get_string('connectionlog', 'local_sebstatus'),
                 new \moodle_url('/local/sebstatus/log.php', ['userid' => $userid]),
@@ -117,13 +138,14 @@ class monitor_callbacks {
 ### Rules
 
 - **Column ids** are `<component>-<name>`, e.g. `local_sebstatus-battery`, where `component` is your plugin and `name` may only contain lowercase letters and digits. Pass the full id to `add_column()`, `set_value()` and `set_html_value()`. Columns appear after the built-in columns, before *Actions*, and can be sorted and hidden like built-in columns. Pass `defaulthidden: true` to `add_column()` to hide a column until the user shows it.
-- **Values**: `set_value()` takes plain text (escaped). `set_html_value()` takes HTML, which is cleaned (no scripts or event handlers). The optional sort value can be a number or text; without it, rows sort by the visible text. Rows without a value sort last.
+- **Values**: `set_value()` takes plain text (escaped). `set_html_value()` takes HTML, which is cleaned (no scripts or event handlers). The optional sort value can be a number or text; without it, rows sort by the visible text. Rows without a value sort last. The search box also finds the visible text of your values (not markup or sort values), even when the user has hidden the column.
 - **Highlights**: if several plugins highlight the same row, the highest severity wins (`danger` > `warning` > `info`).
 - **Actions** are plain links (`moodle_url`), shown after the built-in entries. Interactive actions are not supported; use the page hook and your own JavaScript instead.
-- **Errors**: exceptions thrown by your callback are not caught, as with any other Moodle hook. Programming errors that do not depend on data throw a `coding_exception`: an invalid or duplicate column id, a value for a column that is not registered, an unknown severity. Register your columns unconditionally and leave values empty instead. Empty labels may come from data, so they only trigger a developer debugging message: the column or action is not shown, and values for that column are ignored. Values, highlights and actions for users who are not shown in the monitor are ignored silently.
-- **Performance**: `extend_rows` runs on every poll, about every 5 seconds for every open monitor. Load your data for all students in one batch and cache external data.
+- **Filters**: declare a group for your plugin with `add_filter_group('<component>', $label)`, then its filters with `add_filter('<component>-<name>', $label, $icon)`; filter ids follow the column id rules, and the component part decides the group. Each group is shown in the filter toolbar with your label, after the built-in groups, with the number of matching students per filter and an *All* entry. In `extend_rows`, mark matching students with `add_filter_match($id, $userid)`, but only for filters returned by `get_filters()`. Like the status filter, users can select one filter per group; filters of different plugins and the other active filters combine with AND. If a combination of your data matters within your plugin, offer it as a filter of its own.
+- **Errors**: exceptions thrown by your callback are not caught, as with any other Moodle hook. Programming errors that do not depend on data throw a `coding_exception`: an invalid or duplicate column id, a value for a column that is not registered, an unknown severity, an invalid component or filter id, a second group for a component, a duplicate filter id, a filter whose component has no group, a match for a filter that is not declared. Register your columns unconditionally and leave values empty instead; match only declared filters. Empty labels may come from data, so they only trigger a developer debugging message: the column, action, filter group or filter is not shown, and values or matches for it are ignored. Values, highlights, actions and matches for users who are not shown in the monitor are ignored silently.
+- **Performance**: `extend_rows` runs on every poll, about every 5 seconds for every open monitor. Load your data for all students in one batch and cache external data. `declare_filters` runs on every poll too: do not load per-student data there, mark matches in `extend_rows` with the data you load anyway.
 - **Permissions**: hooks only run for users with `quiz/livequizmonitor:view`. Add your own capability checks inside your callback if needed.
-- **New columns** appear after a page reload; the table header is not rebuilt during polling.
+- **New columns and filters** appear after a page reload; the table header and the filter toolbar are not rebuilt during polling. Filter counts and matches update on every poll; a selected filter that is no longer declared stops filtering.
 
 ### JavaScript
 

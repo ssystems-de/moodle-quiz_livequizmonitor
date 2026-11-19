@@ -100,6 +100,8 @@ export const createInitialState = () => ({
             nooverride: false,
             useroverride: false,
             groupoverride: false,
+            // Selected filters of other plugins (filter ids), combined with AND.
+            extension: [],
         },
         sortcolumn: 'status',
         sortdirection: 'asc',
@@ -115,10 +117,21 @@ export const createInitialState = () => ({
         canviewattempts: false,
         canviewlogs: false,
         extensioncolumns: [],
+        extensionfiltergroups: [],
     },
     summary: emptySummary(),
     students: [],
 });
+
+/**
+ * Ids of all filters in the given filter groups of other plugins.
+ *
+ * @param {Array} groups Filter groups from the monitor state (meta.extensionfiltergroups)
+ * @returns {string[]}
+ */
+export const declaredFilterIds = (groups) => (groups ?? []).flatMap(
+    (group) => (group.filters ?? []).map((filter) => filter.id)
+);
 
 /**
  * Normalise API student rows for reactive StateMap (requires id).
@@ -130,6 +143,7 @@ const normaliseStudents = (students) => students.map((student) => ({
     extensioncells: [],
     highlight: '',
     extensionactions: [],
+    extensionfilters: [],
     ...student,
     id: student.userid,
 }));
@@ -190,6 +204,15 @@ class MonitorMutations {
             stateManager.state.meta.groupoverridecount = payload.groupoverridecount;
         }
         stateManager.state.meta.extensioncolumns = payload.extensioncolumns ?? [];
+        stateManager.state.meta.extensionfiltergroups = payload.extensionfiltergroups ?? [];
+
+        // A selected filter that is no longer declared (e.g. the plugin was disabled) must not
+        // restrict the rows anymore. Its button stays until the page is reloaded.
+        const declared = new Set(declaredFilterIds(stateManager.state.meta.extensionfiltergroups));
+        const selected = stateManager.state.meta.filters.extension ?? [];
+        if (selected.some((id) => !declared.has(id))) {
+            stateManager.state.meta.filters.extension = selected.filter((id) => declared.has(id));
+        }
 
         // Update summary buckets in place so watchers receive summary.<bucket>:updated events.
         ['notstarted', 'inprogress', 'idle', 'completed'].forEach((key) => {
@@ -312,6 +335,50 @@ class MonitorMutations {
     }
 
     /**
+     * Toggle a filter of another plugin.
+     *
+     * Like the status and override filters, one filter per plugin group can be selected: selecting
+     * a filter replaces the selected filter of the same group. Filters of different groups combine
+     * with AND.
+     *
+     * @param {StateManager} stateManager
+     * @param {string} id Filter id
+     */
+    setExtensionFilter(stateManager, id) {
+        const group = (stateManager.state.meta.extensionfiltergroups ?? []).find(
+            (candidate) => declaredFilterIds([candidate]).includes(id)
+        );
+        if (!group) {
+            return;
+        }
+        const groupids = new Set(declaredFilterIds([group]));
+        const selected = stateManager.state.meta.filters.extension ?? [];
+        stateManager.setReadOnly(false);
+        // Assign a new list instead of changing the current one.
+        stateManager.state.meta.filters.extension = selected.includes(id)
+            ? selected.filter((other) => other !== id)
+            : [...selected.filter((other) => !groupids.has(other)), id];
+        stateManager.setReadOnly(true);
+    }
+
+    /**
+     * Clear the selected filters of one plugin ("All" entry of its toolbar group).
+     *
+     * @param {StateManager} stateManager
+     * @param {string} component Component of the filter group
+     */
+    clearExtensionFilterGroup(stateManager, component) {
+        const group = (stateManager.state.meta.extensionfiltergroups ?? []).find(
+            (candidate) => candidate.component === component
+        );
+        const groupids = new Set(declaredFilterIds(group ? [group] : []));
+        stateManager.setReadOnly(false);
+        stateManager.state.meta.filters.extension = (stateManager.state.meta.filters.extension ?? [])
+            .filter((id) => !groupids.has(id));
+        stateManager.setReadOnly(true);
+    }
+
+    /**
      * Reset search, status, and flag filters to defaults.
      *
      * @param {StateManager} stateManager
@@ -323,6 +390,7 @@ class MonitorMutations {
         stateManager.state.meta.filters.nooverride = false;
         stateManager.state.meta.filters.useroverride = false;
         stateManager.state.meta.filters.groupoverride = false;
+        stateManager.state.meta.filters.extension = [];
         stateManager.setReadOnly(true);
     }
 

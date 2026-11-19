@@ -32,6 +32,10 @@ if (defined('BEHAT_SITE_RUNNING')) {
     $fixture = \quiz_livequizmonitor\test\behat_hook_callbacks::class;
     $callbacks = [
         [
+            'hook' => \quiz_livequizmonitor\hook\declare_filters::class,
+            'callback' => [$fixture, 'declare_filters'],
+        ],
+        [
             'hook' => \quiz_livequizmonitor\hook\extend_rows::class,
             'callback' => [$fixture, 'extend_rows'],
         ],

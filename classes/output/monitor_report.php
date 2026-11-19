@@ -427,6 +427,25 @@ class monitor_report implements renderable, templatable {
             'alloverridelabel' => get_string('filter:all', 'quiz_livequizmonitor'),
             'alloverridecount' => $state->totalstudents,
             'alloverrideactive' => true,
+            'extensionfiltergroups' => $this->export_extension_filter_groups($state),
         ];
+    }
+
+    /**
+     * Toolbar groups with the filters of other plugins, see templates/extension_filter_group.mustache.
+     *
+     * @param stdClass $state Monitor state.
+     * @return array[] One entry per group; no filter is selected on page load.
+     */
+    protected function export_extension_filter_groups(stdClass $state): array {
+        $groups = [];
+        foreach ($state->extensionfiltergroups ?? [] as $group) {
+            $groups[] = $group + [
+                'labelsep' => get_string('labelsep', 'langconfig'),
+                'alllabel' => get_string('filter:all', 'quiz_livequizmonitor'),
+                'allcount' => $state->totalstudents,
+            ];
+        }
+        return $groups;
     }
 }

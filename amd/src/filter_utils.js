@@ -35,7 +35,7 @@ export const normaliseSearch = (value) => {
  * Whether a student row matches the active filter state.
  *
  * @param {object} student Student row from reactive state
- * @param {object} filters Filter state {search, status, nooverride, useroverride, groupoverride}
+ * @param {object} filters Filter state {search, status, nooverride, useroverride, groupoverride, extension}
  * @returns {boolean}
  */
 export const matchesFilters = (student, filters) => {
@@ -56,6 +56,15 @@ export const matchesFilters = (student, filters) => {
 
     if (filters?.groupoverride && !student.hasgroupoverride) {
         return false;
+    }
+
+    // Filters of other plugins: the student must match every selected one.
+    const extension = filters?.extension ?? [];
+    if (extension.length > 0) {
+        const matched = student.extensionfilters ?? [];
+        if (!extension.every((id) => matched.includes(id))) {
+            return false;
+        }
     }
 
     if (search !== '') {

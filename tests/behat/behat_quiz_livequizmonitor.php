@@ -255,6 +255,17 @@ class behat_quiz_livequizmonitor extends behat_base {
     }
 
     /**
+     * Let the extension hook callbacks return changed data from the next refresh on.
+     *
+     * See \quiz_livequizmonitor\test\behat_hook_callbacks::is_changed().
+     *
+     * @Given /^the live quiz monitor extension fixture data changes$/
+     */
+    public function the_live_quiz_monitor_extension_fixture_data_changes(): void {
+        set_config('behatextensionfixture', 2, 'quiz_livequizmonitor');
+    }
+
+    /**
      * Check that students appear in the expected order.
      *
      * @Then /^the following students should appear in order:$/

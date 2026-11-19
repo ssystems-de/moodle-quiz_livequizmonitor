@@ -50,6 +50,9 @@ use stdClass;
  * - Empty labels may come from data, so they are ignored with a developer debugging message: the
  *   column or action is dropped, values for a dropped column are ignored silently. Users who are not
  *   shown in the monitor are ignored silently.
+ * - Filters are declared with the declare_filters hook; here callbacks mark which students match
+ *   them. Only mark filters returned by get_filters(): filters may be declared for some quizzes only,
+ *   and a match for a filter that is not declared throws a coding_exception.
  */
 #[\core\attribute\label('Add columns, row highlights and row actions to the live quiz monitor.')]
 #[\core\attribute\tags('quiz_livequizmonitor')]
@@ -113,6 +116,12 @@ final class extend_rows {
     /** @var array[] Actions per student, indexed by user id, in the order they were added. */
     protected $actions = [];
 
+    /** @var declare_filters|null Filters declared for this quiz, null when none were declared. */
+    protected $filters;
+
+    /** @var array[] Matched filter ids per student, indexed by user id, with the filter ids as keys. */
+    protected $filtermatches = [];
+
     /**
      * Constructor.
      *
@@ -121,8 +130,16 @@ final class extend_rows {
      * @param stdClass $quiz Quiz record.
      * @param int $groupid Active group id (0 = all groups).
      * @param stdClass[] $rows Student rows of the monitor.
+     * @param declare_filters|null $filters Filters declared for this quiz, after the declare_filters dispatch.
      */
-    public function __construct(stdClass $course, cm_info $cm, stdClass $quiz, int $groupid, array $rows) {
+    public function __construct(
+        stdClass $course,
+        cm_info $cm,
+        stdClass $quiz,
+        int $groupid,
+        array $rows,
+        ?declare_filters $filters = null,
+    ) {
         $this->course = $course;
         $this->cm = $cm;
         $this->quiz = $quiz;
@@ -130,6 +147,7 @@ final class extend_rows {
         foreach ($rows as $row) {
             $this->rows[(int) $row->userid] = $row;
         }
+        $this->filters = $filters;
     }
 
     // Monitor data.
@@ -328,6 +346,42 @@ final class extend_rows {
         ];
     }
 
+    // Filters.
+
+    /**
+     * Filters declared for this quiz with the declare_filters hook.
+     *
+     * Check this before marking matches: a plugin may declare its filters for some quizzes only.
+     *
+     * @return array[] Filter id => ['id' => string, 'label' => string], in declaration order.
+     */
+    public function get_filters(): array {
+        return $this->filters ? $this->filters->get_filters() : [];
+    }
+
+    /**
+     * Mark a student as matching a declared filter.
+     *
+     * @param string $id Filter id, as passed to declare_filters::add_filter().
+     * @param int $userid Student user id.
+     * @throws \coding_exception If the filter is not declared for this quiz.
+     */
+    public function add_filter_match(string $id, int $userid): void {
+        if ($this->filters && $this->filters->is_dropped_filter($id)) {
+            // Already reported when the filter was declared.
+            return;
+        }
+        if (!$this->filters || !$this->filters->is_declared_filter($id)) {
+            throw new \coding_exception("Live quiz monitor filter '{$id}' is not declared");
+        }
+        if (!$this->is_known_user($userid)) {
+            return;
+        }
+
+        // Keys make a second match for the same filter a no-op.
+        $this->filtermatches[$userid][$id] = true;
+    }
+
     // Results, read by the monitor after the dispatch.
 
     /**
@@ -364,6 +418,20 @@ final class extend_rows {
      */
     public function get_actions(): array {
         return $this->actions;
+    }
+
+    /**
+     * Matched filters per student, in declaration order.
+     *
+     * @return array[] User id => list of filter ids.
+     */
+    public function get_filter_matches(): array {
+        $ids = array_keys($this->get_filters());
+        $result = [];
+        foreach ($this->filtermatches as $userid => $matches) {
+            $result[$userid] = array_values(array_filter($ids, static fn(string $id): bool => isset($matches[$id])));
+        }
+        return $result;
     }
 
     // Internal helpers.

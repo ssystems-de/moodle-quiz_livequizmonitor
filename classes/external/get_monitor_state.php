@@ -137,7 +137,9 @@ class get_monitor_state extends external_api {
             'timeremaining' => new external_value(PARAM_INT, 'Seconds remaining', VALUE_OPTIONAL),
             'timeremainingdisplay' => new external_value(PARAM_TEXT, 'Formatted time remaining'),
             'hastimer' => new external_value(PARAM_BOOL, 'Has countdown timer'),
-            'searchtext' => new external_value(PARAM_TEXT, 'Lowercase search haystack'),
+            // PARAM_RAW: the text of extension columns may contain "<" (e.g. "battery <20%"), which
+            // PARAM_TEXT rejects. The browser only searches in it, it is never shown.
+            'searchtext' => new external_value(PARAM_RAW, 'Lowercase search haystack'),
             'attemptendat' => new external_value(PARAM_INT, 'Attempt deadline timestamp', VALUE_OPTIONAL),
             'canextend' => new external_value(PARAM_BOOL, 'Viewer may extend time'),
             'hasnote' => new external_value(PARAM_BOOL, 'Student has a saved note'),
@@ -161,13 +163,19 @@ class get_monitor_state extends external_api {
             'highlight' => new external_value(PARAM_ALPHA, 'Row highlight: empty, info, warning or danger'),
             'extensionactions' => new external_multiple_structure(
                 new external_single_structure([
-                    'label' => new external_value(PARAM_TEXT, 'Link text'),
+                    // Labels of other plugins are PARAM_RAW: they may contain "<", which PARAM_TEXT
+                    // rejects. The templates escape them.
+                    'label' => new external_value(PARAM_RAW, 'Link text'),
                     'url' => new external_value(PARAM_URL, 'Link target'),
                     'iconkey' => new external_value(PARAM_RAW, 'Pix icon key, empty for none'),
                     'iconcomponent' => new external_value(PARAM_COMPONENT, 'Pix icon component, empty for none'),
                     'newtab' => new external_value(PARAM_BOOL, 'Open in a new tab'),
                 ]),
                 'Row actions added by other plugins'
+            ),
+            'extensionfilters' => new external_multiple_structure(
+                new external_value(PARAM_ALPHANUMEXT, 'Filter id'),
+                'Filters from other plugins that the student matches'
             ),
         ]);
 
@@ -200,10 +208,26 @@ class get_monitor_state extends external_api {
             'extensioncolumns' => new external_multiple_structure(
                 new external_single_structure([
                     'id' => new external_value(PARAM_ALPHANUMEXT, 'Extension column id'),
-                    'label' => new external_value(PARAM_TEXT, 'Column header'),
+                    'label' => new external_value(PARAM_RAW, 'Column header'),
                     'defaulthidden' => new external_value(PARAM_BOOL, 'Hidden until the user shows it'),
                 ]),
                 'Columns added by other plugins'
+            ),
+            'extensionfiltergroups' => new external_multiple_structure(
+                new external_single_structure([
+                    'component' => new external_value(PARAM_ALPHANUMEXT, 'Component of the plugin'),
+                    'label' => new external_value(PARAM_RAW, 'Group label'),
+                    'filters' => new external_multiple_structure(
+                        new external_single_structure([
+                            'id' => new external_value(PARAM_ALPHANUMEXT, 'Filter id'),
+                            'label' => new external_value(PARAM_RAW, 'Filter label'),
+                            'iconkey' => new external_value(PARAM_RAW, 'Pix icon key, empty for none'),
+                            'iconcomponent' => new external_value(PARAM_COMPONENT, 'Pix icon component, empty for none'),
+                            'count' => new external_value(PARAM_INT, 'Students matching this filter'),
+                        ])
+                    ),
+                ]),
+                'Filter groups declared by other plugins'
             ),
             'sortcolumn' => new external_value(PARAM_ALPHANUMEXT, 'Sort column'),
             'sortdirection' => new external_value(PARAM_ALPHA, 'Sort direction'),
@@ -250,6 +274,7 @@ class get_monitor_state extends external_api {
                 'extensioncells' => $row->extensioncells ?? [],
                 'highlight' => (string) ($row->highlight ?? ''),
                 'extensionactions' => $row->extensionactions ?? [],
+                'extensionfilters' => $row->extensionfilters ?? [],
             ];
             if ($row->attemptid !== null) {
                 $entry['attemptid'] = $row->attemptid;
@@ -291,6 +316,7 @@ class get_monitor_state extends external_api {
             ],
             'students' => $students,
             'extensioncolumns' => $state->extensioncolumns ?? [],
+            'extensionfiltergroups' => $state->extensionfiltergroups ?? [],
             'sortcolumn' => $state->sortcolumn,
             'sortdirection' => $state->sortdirection,
         ];

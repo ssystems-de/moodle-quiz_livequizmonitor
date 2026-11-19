@@ -28,6 +28,11 @@ defined('MOODLE_INTERNAL') || die();
 
 $callbacks = [
     [
+        'hook' => \quiz_livequizmonitor\hook\declare_filters::class,
+        'callback' => [\quiz_livequizmonitor\tests\extension_callbacks_second::class, 'declare_filters'],
+        'priority' => 50,
+    ],
+    [
         'hook' => \quiz_livequizmonitor\hook\extend_rows::class,
         'callback' => [\quiz_livequizmonitor\tests\extension_callbacks_second::class, 'extend_rows'],
         'priority' => 50,
