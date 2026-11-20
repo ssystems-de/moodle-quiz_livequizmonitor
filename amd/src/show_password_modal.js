@@ -14,7 +14,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Show quiz password  in a modal popup.
+ * Show the quiz password or the Safe Exam Browser quit password in a modal popup.
  *
  * @module     quiz_livequizmonitor/student_note_modal
  * @copyright  2026 onwards University College London {@link https://www.ucl.ac.uk/}
@@ -30,16 +30,17 @@ import {getString} from 'core/str';
 /**
  * Load the strings required by the password modal.
  *
+ * @param {string} titlestringid The string id of the modal title.
  * @returns {Promise<Object>} The localised strings.
  * @property {string} modaltitle The modal title.
  * @property {string} closelabel The label for the close button.
  */
-const loadStrings = async() => {
+const loadStrings = async(titlestringid) => {
     const [
         modaltitle,
         closelabel,
     ] = await Promise.all([
-        getString('showpassword:modaltitle', 'quiz_livequizmonitor'),
+        getString(titlestringid, 'quiz_livequizmonitor'),
         getString('closebuttontitle', 'moodle'),
     ]);
 
@@ -50,23 +51,24 @@ const loadStrings = async() => {
 };
 
 /**
- * Display the quiz password in a modal dialog.
+ * Display a password in a modal dialog.
  *
  * The modal displays the password supplied in the configuration object and
  * provides a button to close the modal. The returned promise resolves when
  * the modal is closed or hidden.
  *
  * @param {Object} config Configuration for the password modal.
- * @param {string|null|undefined} config.quizpassword The quiz password to display.
+ * @param {string|null|undefined} config.password The password to display.
+ * @param {string} [config.titlestringid] The string id of the modal title (default: quiz password).
  * @returns {Promise<null>} Resolves when the modal is closed or hidden.
  */
 export const showPasswordModal = async(config) => {
-    const strings = await loadStrings();
+    const strings = await loadStrings(config.titlestringid ?? 'showpassword:modaltitle');
 
     const {html, js} = await Templates.renderForPromise(
         'quiz_livequizmonitor/password_modal_body',
         {
-            quizpassword: config.quizpassword ?? '',
+            password: config.password ?? '',
         }
     );
 
