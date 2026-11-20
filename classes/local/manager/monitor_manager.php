@@ -76,6 +76,7 @@ class monitor_manager {
         'email' => 'email',
         'progress' => 'progresspercent',
         'timeremaining' => 'timeremaining',
+        'endtime' => 'endtime',
     ];
 
     /**
@@ -204,11 +205,14 @@ class monitor_manager {
 
         // Load progress and access managers for all attempts at once instead of one quiz_attempt per student.
         $progressmap = self::load_attempt_progress($relevantattempts);
-        $activeuserids = array_keys(array_filter(
+        // Active attempts need an access manager for the time left, and active and
+        // completed attempts both need one for the end time (when the attempt was due to close).
+        $timeduserids = array_keys(array_filter(
             $relevantattempts,
             static fn(stdClass $attempt): bool => self::is_active_attempt_state($attempt->state)
+                || self::is_completed_attempt_state($attempt->state)
         ));
-        $accessmanagers = self::get_access_managers((int) $quiz->id, $activeuserids, $now);
+        $accessmanagers = self::get_access_managers((int) $quiz->id, $timeduserids, $now);
         $canextend = extend_time_manager::user_can_extend($context);
 
         $rows = [];
@@ -484,7 +488,7 @@ class monitor_manager {
      * effective settings exactly like quiz_settings::create($quizid, $userid).
      *
      * @param int $quizid Quiz id.
-     * @param int[] $userids Users with an active attempt.
+     * @param int[] $userids Users with an active or completed attempt.
      * @param int $now Current timestamp.
      * @return access_manager[] Map user id => access manager.
      */
@@ -663,6 +667,7 @@ class monitor_manager {
         $timeremaining = null;
         $timeremainingdisplay = '';
         $attemptendat = null;
+        $scheduledend = null;
 
         if ($attempt !== null && $status !== self::STATUS_NOTSTARTED) {
             $answered = $progress->answered ?? 0;
@@ -693,6 +698,15 @@ class monitor_manager {
                         $statuslabel = self::status_label($status);
                     }
                 }
+                // When the attempt was due to close, from its start time, the time limit, the close
+                // time, and the student's overrides. For a completed attempt this is not when it was
+                // submitted, which may have been earlier.
+                if ($accessmanager !== null) {
+                    $endtime = $accessmanager->get_end_time($attempt);
+                    if ($endtime !== false) {
+                        $scheduledend = (int) $endtime;
+                    }
+                }
             } catch (\Exception $e) {
                 debugging('Failed to load attempt ' . $attempt->id . ': ' . $e->getMessage(), DEBUG_DEVELOPER);
             }
@@ -710,6 +724,19 @@ class monitor_manager {
         $progresspercent = self::compute_progress_percent($status, $answered, $totalquestions);
 
         $hastimer = in_array($status, self::INPROGRESS_OR_IDLE) && $timeremaining !== null;
+
+        // End time: when the attempt was due to close, for active and completed attempts alike.
+        // Not started, and no deadline, show a dash, like the Time left column.
+        $endat = null;
+        $endtimedisplay = '—';
+        if ($status !== self::STATUS_NOTSTARTED && $scheduledend !== null) {
+            $endat = $scheduledend;
+            $graceperiod = 0;
+            if (($quiz->overduehandling ?? '') === 'graceperiod') {
+                $graceperiod = (int) ($quiz->graceperiod ?? 0);
+            }
+            $endtimedisplay = self::format_end_time((int) $attempt->timestart, $endat, $graceperiod);
+        }
 
         return (object) [
             'courseid' => (int) $quiz->course,
@@ -732,6 +759,8 @@ class monitor_manager {
             'timeremainingdisplay' => $timeremainingdisplay,
             'searchtext' => self::build_searchtext($user, $showemail),
             'attemptendat' => $attemptendat,
+            'endtime' => $endat,
+            'endtimedisplay' => $endtimedisplay,
             'canextend' => $canextend,
             'hastimer' => $hastimer,
             'hasnote' => false,
@@ -794,6 +823,40 @@ class monitor_manager {
             return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
         return sprintf('%02d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Format an attempt's end time for the End time column, e.g. "12:15".
+     *
+     * The time is shown in the current user's time zone. If the end time falls on a
+     * different day from the start of the attempt, the date is shown first, e.g.
+     * "06-Nov-2026 00:15". If there is a grace period, the end of the grace period
+     * is appended, e.g. "12:15 ~ 12:20".
+     *
+     * @param int $starttime Attempt start timestamp.
+     * @param int $endtime Attempt end timestamp.
+     * @param int $graceperiod Grace period in seconds, or 0 for none.
+     * @return string
+     */
+    public static function format_end_time(int $starttime, int $endtime, int $graceperiod = 0): string {
+        $timeformat = get_string('strftimetime24', 'langconfig');
+        $display = userdate($endtime, $timeformat);
+
+        // Compare calendar days in the user's time zone.
+        $dayformat = '%Y-%m-%d';
+        if (userdate($starttime, $dayformat, 99, false) !== userdate($endtime, $dayformat, 99, false)) {
+            $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
+            $display = userdate($endtime, $dateformat, 99, false) . ' ' . $display;
+        }
+
+        if ($graceperiod > 0) {
+            $display = get_string('endtime:range', 'quiz_livequizmonitor', (object) [
+                'from' => $display,
+                'to' => userdate($endtime + $graceperiod, $timeformat),
+            ]);
+        }
+
+        return $display;
     }
 
     /**
