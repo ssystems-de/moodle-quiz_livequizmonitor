@@ -78,6 +78,7 @@ final class extend_rows {
         'status',
         'attemptid',
         'attemptendat',
+        'endtime',
         'timeremaining',
         'progressanswered',
         'progresstotal',
@@ -183,7 +184,7 @@ final class extend_rows {
      * Data of the student rows shown in the monitor for the current user, indexed by user id.
      *
      * These are not user records, but new objects with these fields of the monitor rows:
-     * userid, fullname, email ('' if the user may not see it), status, attemptid, attemptendat,
+     * userid, fullname, email ('' if the user may not see it), status, attemptid, attemptendat, endtime,
      * timeremaining, progressanswered, progresstotal.
      * Note, override and blocked flags are set after the hook and are not available.
      *

@@ -42,7 +42,8 @@ Feature: Show each student's end time in Live Quiz Monitor
     When I am on the live monitor report for "Quiz 1"
     Then I should see "End time" in the ".livequizmonitor-table thead" "css_element"
     And I should see "11:00" in the "Sam Student" "table_row"
-    And I should see "16-Jan-2026 00:30" in the "Pat Pupil" "table_row"
+    And I should see "00:30" in the "Pat Pupil" "table_row"
+    And I should see "(16-Jan-2026)" in the "Pat Pupil" "table_row"
 
   Scenario: A grace period shows the end time as a range, and a completed attempt shows when it was due to close
     Given the following "activities" exist:

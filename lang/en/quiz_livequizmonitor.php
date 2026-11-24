@@ -28,6 +28,7 @@ $string['attempts:showlabel'] = 'Show attempts';
 $string['columns:hidecolumn'] = 'Hide {$a} column';
 $string['columns:showcolumn'] = 'Show {$a} column';
 $string['emptycohort'] = 'No eligible students were found for this quiz.';
+$string['endtime:date'] = '({$a})';
 $string['endtime:dateformat'] = '%d-%b-%Y';
 $string['endtime:range'] = '{$a->from} ~ {$a->to}';
 $string['error:groupnotvisible'] = 'You do not have permission to view that group in this monitor.';

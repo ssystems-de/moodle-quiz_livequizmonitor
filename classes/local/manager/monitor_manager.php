@@ -707,18 +707,26 @@ class monitor_manager {
         if ($attempt !== null && $status !== self::STATUS_NOTSTARTED) {
             $answered = $progress->answered ?? 0;
             try {
-                if ($status === self::STATUS_INPROGRESS && $accessmanager !== null) {
-                    $timeremaining = $accessmanager->get_time_left_display($attempt, $now);
+                // When the attempt was due to close, from its start time, the time limit, the close
+                // time, and the student's overrides. For a completed attempt this is not when it was
+                // submitted, which may have been earlier.
+                if ($accessmanager !== null) {
                     $endtime = $accessmanager->get_end_time($attempt);
                     if ($endtime !== false) {
-                        $attemptendat = (int) $endtime;
+                        $scheduledend = (int) $endtime;
+                    }
+                }
+                if ($status === self::STATUS_INPROGRESS && $accessmanager !== null) {
+                    $timeremaining = $accessmanager->get_time_left_display($attempt, $now);
+                    if ($scheduledend !== null) {
+                        $attemptendat = $scheduledend;
 
                         // When there is no time limit and timeclose is more than an hour away,
                         // timeremaining is set to FALSE and 00:00 is displayed in the monitor.
                         // This is not what we want, so we recalculate and override it.
                         // See QUIZ_SHOW_TIME_BEFORE_DEADLINE.
-                        if ($timeremaining === false && $endtime > $now) {
-                            $timeremaining = $endtime - $now;
+                        if ($timeremaining === false && $scheduledend > $now) {
+                            $timeremaining = $scheduledend - $now;
                         }
                     }
                     // Format timeremaining.
@@ -731,15 +739,6 @@ class monitor_manager {
                     if (self::is_attempt_idle($progress, $now)) {
                         $status = self::STATUS_IDLE;
                         $statuslabel = self::status_label($status);
-                    }
-                }
-                // When the attempt was due to close, from its start time, the time limit, the close
-                // time, and the student's overrides. For a completed attempt this is not when it was
-                // submitted, which may have been earlier.
-                if ($accessmanager !== null) {
-                    $endtime = $accessmanager->get_end_time($attempt);
-                    if ($endtime !== false) {
-                        $scheduledend = (int) $endtime;
                     }
                 }
             } catch (\Exception $e) {
@@ -764,13 +763,15 @@ class monitor_manager {
         // Not started, and no deadline, show a dash, like the Time left column.
         $endat = null;
         $endtimedisplay = '—';
+        $endtimedate = '';
         if ($status !== self::STATUS_NOTSTARTED && $scheduledend !== null) {
             $endat = $scheduledend;
             $graceperiod = 0;
             if (($quiz->overduehandling ?? '') === 'graceperiod') {
                 $graceperiod = (int) ($quiz->graceperiod ?? 0);
             }
-            $endtimedisplay = self::format_end_time((int) $attempt->timestart, $endat, $graceperiod);
+            $endtimedisplay = self::format_end_time($endat, $graceperiod);
+            $endtimedate = self::format_end_date((int) $attempt->timestart, $endat, $graceperiod);
         }
 
         return (object) [
@@ -796,6 +797,7 @@ class monitor_manager {
             'attemptendat' => $attemptendat,
             'endtime' => $endat,
             'endtimedisplay' => $endtimedisplay,
+            'endtimedate' => $endtimedate,
             'canextend' => $canextend,
             'hastimer' => $hastimer,
             'hasnote' => false,
@@ -863,26 +865,17 @@ class monitor_manager {
     /**
      * Format an attempt's end time for the End time column, e.g. "12:15".
      *
-     * The time is shown in the current user's time zone. If the end time falls on a
-     * different day from the start of the attempt, the date is shown first, e.g.
-     * "06-Nov-2026 00:15". If there is a grace period, the end of the grace period
-     * is appended, e.g. "12:15 ~ 12:20".
+     * The time is shown in the current user's time zone. If there is a grace period,
+     * the end of the grace period is appended, e.g. "12:15 ~ 12:20".
+     * See format_end_date() for the date shown after it when the day changes.
      *
-     * @param int $starttime Attempt start timestamp.
      * @param int $endtime Attempt end timestamp.
      * @param int $graceperiod Grace period in seconds, or 0 for none.
      * @return string
      */
-    public static function format_end_time(int $starttime, int $endtime, int $graceperiod = 0): string {
+    public static function format_end_time(int $endtime, int $graceperiod = 0): string {
         $timeformat = get_string('strftimetime24', 'langconfig');
         $display = userdate($endtime, $timeformat);
-
-        // Compare calendar days in the user's time zone.
-        $dayformat = '%Y-%m-%d';
-        if (userdate($starttime, $dayformat, 99, false) !== userdate($endtime, $dayformat, 99, false)) {
-            $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
-            $display = userdate($endtime, $dateformat, 99, false) . ' ' . $display;
-        }
 
         if ($graceperiod > 0) {
             $display = get_string('endtime:range', 'quiz_livequizmonitor', (object) [
@@ -892,6 +885,29 @@ class monitor_manager {
         }
 
         return $display;
+    }
+
+    /**
+     * Format the day an attempt ends, for the End time column, e.g. "(06-Nov-2026)".
+     *
+     * This is only shown if the attempt finally ends (including any grace period) on a
+     * different day from its start, in the current user's time zone. Otherwise it is ''.
+     * The monitor shows it after the end time, e.g. "23:55 ~ 00:10 (06-Nov-2026)",
+     * and lets the browser break the line between the two if the column is narrow.
+     *
+     * @param int $starttime Attempt start timestamp.
+     * @param int $endtime Attempt end timestamp.
+     * @param int $graceperiod Grace period in seconds, or 0 for none.
+     * @return string
+     */
+    public static function format_end_date(int $starttime, int $endtime, int $graceperiod = 0): string {
+        $finalend = $endtime + max(0, $graceperiod);
+        $dayformat = '%Y-%m-%d';
+        if (userdate($starttime, $dayformat, 99, false) === userdate($finalend, $dayformat, 99, false)) {
+            return '';
+        }
+        $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
+        return get_string('endtime:date', 'quiz_livequizmonitor', userdate($finalend, $dateformat, 99, false));
     }
 
     /**

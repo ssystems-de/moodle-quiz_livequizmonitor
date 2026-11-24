@@ -28,6 +28,7 @@ $string['attempts:showlabel'] = 'Versuche anzeigen';
 $string['columns:hidecolumn'] = 'Spalte „{$a}“ ausblenden';
 $string['columns:showcolumn'] = 'Spalte „{$a}“ einblenden';
 $string['emptycohort'] = 'Für dieses Quiz wurden keine berechtigten Teilnehmenden gefunden.';
+$string['endtime:date'] = '({$a})';
 $string['endtime:dateformat'] = '%d-%b-%Y';
 $string['endtime:range'] = '{$a->from} ~ {$a->to}';
 $string['error:groupnotvisible'] = 'Sie haben keine Berechtigung, diese Gruppe in diesem Monitor anzuzeigen.';

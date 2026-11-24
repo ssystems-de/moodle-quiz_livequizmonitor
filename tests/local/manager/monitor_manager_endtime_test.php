@@ -131,28 +131,40 @@ final class monitor_manager_endtime_test extends advanced_testcase {
      */
     public static function format_end_time_provider(): array {
         return [
-            'Same day' => ['2026-11-05 10:00', '2026-11-05 11:30', 0, '11:30'],
-            'Leading zero on the hour' => ['2026-11-05 08:00', '2026-11-05 09:05', 0, '09:05'],
-            'Different day' => ['2026-11-05 23:30', '2026-11-06 00:15', 0, '06-Nov-2026 00:15'],
-            'Grace period' => ['2026-11-05 11:00', '2026-11-05 12:15', 300, '12:15 ~ 12:20'],
-            'Grace period, different day' => ['2026-11-05 22:00', '2026-11-06 23:55', 900, '06-Nov-2026 23:55 ~ 00:10'],
+            'Same day' => ['2026-11-05 10:00', '2026-11-05 11:30', 0, '11:30', ''],
+            'Leading zero on the hour' => ['2026-11-05 08:00', '2026-11-05 09:05', 0, '09:05', ''],
+            'Different day' => ['2026-11-05 23:30', '2026-11-06 00:15', 0, '00:15', '(06-Nov-2026)'],
+            'Grace period' => ['2026-11-05 11:00', '2026-11-05 12:15', 300, '12:15 ~ 12:20', ''],
+            'Grace period, different day' => ['2026-11-05 23:30', '2026-11-06 00:15', 900, '00:15 ~ 00:30', '(06-Nov-2026)'],
+            'Only the grace period ends on a different day' => [
+                '2026-11-05 22:00', '2026-11-05 23:55', 900, '23:55 ~ 00:10', '(06-Nov-2026)',
+            ],
         ];
     }
 
     /**
-     * End times are shown as hh:mm, with the date when the day changes, and a range for a grace period.
+     * End times are shown as hh:mm, or a range for a grace period, and the date is
+     * shown separately when the attempt ends on a different day from its start.
      *
      * @dataProvider format_end_time_provider
      * @param string $start Attempt start, local time.
      * @param string $end Attempt end, local time.
      * @param int $graceperiod Grace period in seconds.
-     * @param string $expected Expected display.
+     * @param string $expectedtime Expected end time display.
+     * @param string $expecteddate Expected end date display.
      */
-    public function test_format_end_time(string $start, string $end, int $graceperiod, string $expected): void {
+    public function test_format_end_time(
+        string $start,
+        string $end,
+        int $graceperiod,
+        string $expectedtime,
+        string $expecteddate
+    ): void {
         $this->resetAfterTest();
         $this->setTimezone(self::TIMEZONE);
 
-        $this->assertSame($expected, monitor_manager::format_end_time(self::ts($start), self::ts($end), $graceperiod));
+        $this->assertSame($expectedtime, monitor_manager::format_end_time(self::ts($end), $graceperiod));
+        $this->assertSame($expecteddate, monitor_manager::format_end_date(self::ts($start), self::ts($end), $graceperiod));
     }
 
     /**
@@ -187,7 +199,7 @@ final class monitor_manager_endtime_test extends advanced_testcase {
 
         $row = $this->get_rows($course, $cm, $quiz)[$student->id];
         $this->assertSame($timestart + 1800, $row->endtime);
-        $this->assertSame(monitor_manager::format_end_time($timestart, $timestart + 1800), $row->endtimedisplay);
+        $this->assertSame(monitor_manager::format_end_time($timestart + 1800), $row->endtimedisplay);
     }
 
     /**
@@ -201,7 +213,8 @@ final class monitor_manager_endtime_test extends advanced_testcase {
         $this->start_attempt($quizgenerator, $quiz, $student, self::ts('2026-01-15 23:30'));
 
         $row = $this->get_rows($course, $cm, $quiz)[$student->id];
-        $this->assertSame('16-Jan-2026 00:30', $row->endtimedisplay);
+        $this->assertSame('00:30', $row->endtimedisplay);
+        $this->assertSame('(16-Jan-2026)', $row->endtimedate);
     }
 
     /**
@@ -272,7 +285,7 @@ final class monitor_manager_endtime_test extends advanced_testcase {
         $after = $this->get_rows($course, $cm, $quiz)[$student->id];
         $this->assertSame($before->endtime + 900, $after->endtime);
         $this->assertSame(
-            monitor_manager::format_end_time((int) $attempt->timestart, $after->endtime),
+            monitor_manager::format_end_time($after->endtime),
             $after->endtimedisplay
         );
     }

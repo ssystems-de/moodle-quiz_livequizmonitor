@@ -17,7 +17,8 @@
         "hastimer": true,
         "timeremaining": 600,
         "timeremainingdisplay": "10:00",
-        "endtimedisplay": "12:15 ~ 12:20",
+        "endtimedisplay": "23:55 ~ 00:10",
+        "endtimedate": "(06-Nov-2026)",
         "showactionscolumn": true,
         "isblocked": false,
         "blockedflaglabel": "Blocked by one-session rule",
@@ -106,7 +107,11 @@
         {{/hastimeoverride}}
     </td>
     <td data-column="endtime" data-field="endtime">
-        <span class="livequizmonitor-timer" data-field="endtimedisplay" data-colcontent="endtime">{{endtimedisplay}}</span>
+        {{! The time and the date each stay on one line, but the line may break between them. }}
+        <span class="livequizmonitor-timer" data-colcontent="endtime">
+            <span class="text-nowrap" data-field="endtimedisplay">{{endtimedisplay}}</span>
+            <span class="text-nowrap" data-field="endtimedate">{{endtimedate}}</span>
+        </span>
     </td>
     {{#extensioncells}}
     {{> quiz_livequizmonitor/extension_cell }}
