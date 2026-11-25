@@ -79,7 +79,7 @@ Other plugins can add information and links to the Live Monitor without patching
 | `\quiz_livequizmonitor\hook\extend_rows` | page load and every poll | add columns with a value per student, highlight rows as `info`, `warning` or `danger`, and add links to the per-student actions menu |
 | `\quiz_livequizmonitor\hook\before_monitor_page_render` | page load | load your own JavaScript on the monitor page |
 
-`extend_rows` gives you `get_course()`, `get_cm()`, `get_quiz()`, `get_context()`, `get_groupid()`, `get_userids()` and `get_student_rows()`. The students are only those the current user may see (groups and access restrictions are applied). `get_student_rows()` returns the data of the monitor rows as the monitor computed it (no user records), so you can e.g. fill your column only for idle students. Available fields: `userid`, `fullname`, `email` (empty if the user may not see it), `status`, `attemptid`, `attemptendat`, `timeremaining`, `progressanswered`, `progresstotal`.
+`extend_rows` gives you `get_course()`, `get_cm()`, `get_quiz()`, `get_context()`, `get_groupid()`, `get_userids()` and `get_student_rows()`. The students are only those the current user may see (groups and access restrictions are applied). `get_student_rows()` returns the data of the monitor rows as the monitor computed it (no user records), so you can e.g. fill your column only for idle students. Available fields: `userid`, `fullname`, `email` (empty if the user may not see it), `status`, `attemptid`, `attemptendat` (in-progress attempts only), `endtime` (when the attempt was due to close, also for completed attempts; null if not started or there is no deadline), `timeremaining`, `progressanswered`, `progresstotal`.
 
 ### Minimal example
 

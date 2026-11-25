@@ -60,6 +60,7 @@ const SORT_FIELDS = {
     email: 'email',
     progress: 'progresspercent',
     timeremaining: 'timeremaining',
+    endtime: 'endtime',
 };
 
 /** Resolves the monitor's reactive instance once init() has created it. */
@@ -100,6 +101,8 @@ class MonitorComponent extends BaseComponent {
             PROGRESSCONTAINER: '[data-field="progress"] .progress[role="progressbar"]',
             PROGRESSLABEL: '[data-field="progress"] .livequizmonitor-progress-label',
             TIMER: '[data-field="timer"]',
+            ENDTIME: '[data-field="endtimedisplay"]',
+            ENDDATE: '[data-field="endtimedate"]',
             SEARCHINPUT: '[data-action="search"]',
             FILTERCHIP: '.livequizmonitor-filter-toolbar [data-action="filter-status"]',
             FILTERFLAG: '.livequizmonitor-filter-toolbar [data-action="filter-flag"]',
@@ -210,6 +213,8 @@ class MonitorComponent extends BaseComponent {
             {watch: 'students.status:updated', handler: this.renderStudents},
             {watch: 'students.canextend:updated', handler: this.renderStudents},
             {watch: 'students.attemptendat:updated', handler: this.renderStudents},
+            {watch: 'students.endtimedisplay:updated', handler: this.renderStudents},
+            {watch: 'students.endtimedate:updated', handler: this.renderStudents},
             {watch: 'students.hasnote:updated', handler: this.renderStudents},
             {watch: 'students.hasuseroverride:updated', handler: this.renderStudents},
             {watch: 'students.hasusertimeoverride:updated', handler: this.renderStudents},
@@ -1079,9 +1084,7 @@ class MonitorComponent extends BaseComponent {
             progresspercent: student.progresspercent ?? 0,
             progressbarclass: student.progressbarclass ?? '',
             progresstext: student.progresstext ?? '',
-            hastimer: !!student.hastimer,
-            timeremaining: student.timeremaining,
-            timeremainingdisplay: student.timeremainingdisplay || formatDuration(student.timeremaining ?? 0),
+            ...this.buildTimeContext(student),
             showemailcolumn: this.showEmailColumn || !!student.showemail,
             showactionscolumn: this.showActionsColumn,
             canextend,
@@ -1112,6 +1115,22 @@ class MonitorComponent extends BaseComponent {
             highlight: student.highlight ?? '',
             extensioncells: this.buildExtensionCells(student),
             ...this.buildExtensionActionsContext(student),
+        };
+    }
+
+    /**
+     * Template context for a student's Time left and End time cells.
+     *
+     * @param {object} student Student state row
+     * @returns {object}
+     */
+    buildTimeContext(student) {
+        return {
+            hastimer: !!student.hastimer,
+            timeremaining: student.timeremaining,
+            timeremainingdisplay: student.timeremainingdisplay || formatDuration(student.timeremaining ?? 0),
+            endtimedisplay: student.endtimedisplay ?? '',
+            endtimedate: student.endtimedate ?? '',
         };
     }
 
@@ -1274,6 +1293,33 @@ class MonitorComponent extends BaseComponent {
     }
 
     /**
+     * Patch a student's Time left and End time cells from state.
+     *
+     * @param {HTMLElement} row Table row element
+     * @param {object} student Student state row
+     */
+    updateTimeCells(row, student) {
+        const timer = row.querySelector(this.selectors.TIMER);
+        if (timer) {
+            if (student.hastimer && student.timeremaining !== null && student.timeremaining !== undefined) {
+                timer.dataset.timeremaining = student.timeremaining;
+                timer.textContent = student.timeremainingdisplay || formatDuration(student.timeremaining);
+            } else {
+                timer.removeAttribute('data-timeremaining');
+                timer.textContent = '—';
+            }
+        }
+        const endtime = row.querySelector(this.selectors.ENDTIME);
+        if (endtime) {
+            endtime.textContent = student.endtimedisplay ?? '';
+        }
+        const enddate = row.querySelector(this.selectors.ENDDATE);
+        if (enddate) {
+            enddate.textContent = student.endtimedate ?? '';
+        }
+    }
+
+    /**
      * Patch an existing student row from state.
      *
      * @param {HTMLElement} row Table row element
@@ -1307,16 +1353,7 @@ class MonitorComponent extends BaseComponent {
                 label.classList.toggle('d-none', !student.progresstext);
             }
         }
-        const timer = row.querySelector(this.selectors.TIMER);
-        if (timer) {
-            if (student.hastimer && student.timeremaining !== null && student.timeremaining !== undefined) {
-                timer.dataset.timeremaining = student.timeremaining;
-                timer.textContent = student.timeremainingdisplay || formatDuration(student.timeremaining);
-            } else {
-                timer.removeAttribute('data-timeremaining');
-                timer.textContent = '—';
-            }
-        }
+        this.updateTimeCells(row, student);
         this.updateOverrideFlag(row, student);
         this.updateTimeOverrideFlag(row, student);
         this.updateNoteFlag(row, student);

@@ -76,6 +76,7 @@ class monitor_manager {
         'email' => 'email',
         'progress' => 'progresspercent',
         'timeremaining' => 'timeremaining',
+        'endtime' => 'endtime',
     ];
 
     /**
@@ -204,11 +205,14 @@ class monitor_manager {
 
         // Load progress and access managers for all attempts at once instead of one quiz_attempt per student.
         $progressmap = self::load_attempt_progress($relevantattempts);
-        $activeuserids = array_keys(array_filter(
+        // Active attempts need an access manager for the time left, and active and
+        // completed attempts both need one for the end time (when the attempt was due to close).
+        $timeduserids = array_keys(array_filter(
             $relevantattempts,
             static fn(stdClass $attempt): bool => self::is_active_attempt_state($attempt->state)
+                || self::is_completed_attempt_state($attempt->state)
         ));
-        $accessmanagers = self::get_access_managers((int) $quiz->id, $activeuserids, $now);
+        $accessmanagers = self::get_access_managers((int) $quiz->id, $timeduserids, $now);
         $canextend = extend_time_manager::user_can_extend($context);
 
         $rows = [];
@@ -519,7 +523,7 @@ class monitor_manager {
      * effective settings exactly like quiz_settings::create($quizid, $userid).
      *
      * @param int $quizid Quiz id.
-     * @param int[] $userids Users with an active attempt.
+     * @param int[] $userids Users with an active or completed attempt.
      * @param int $now Current timestamp.
      * @return access_manager[] Map user id => access manager.
      */
@@ -698,22 +702,31 @@ class monitor_manager {
         $timeremaining = null;
         $timeremainingdisplay = '';
         $attemptendat = null;
+        $scheduledend = null;
 
         if ($attempt !== null && $status !== self::STATUS_NOTSTARTED) {
             $answered = $progress->answered ?? 0;
             try {
-                if ($status === self::STATUS_INPROGRESS && $accessmanager !== null) {
-                    $timeremaining = $accessmanager->get_time_left_display($attempt, $now);
+                // When the attempt was due to close, from its start time, the time limit, the close
+                // time, and the student's overrides. For a completed attempt this is not when it was
+                // submitted, which may have been earlier.
+                if ($accessmanager !== null) {
                     $endtime = $accessmanager->get_end_time($attempt);
                     if ($endtime !== false) {
-                        $attemptendat = (int) $endtime;
+                        $scheduledend = (int) $endtime;
+                    }
+                }
+                if ($status === self::STATUS_INPROGRESS && $accessmanager !== null) {
+                    $timeremaining = $accessmanager->get_time_left_display($attempt, $now);
+                    if ($scheduledend !== null) {
+                        $attemptendat = $scheduledend;
 
                         // When there is no time limit and timeclose is more than an hour away,
                         // timeremaining is set to FALSE and 00:00 is displayed in the monitor.
                         // This is not what we want, so we recalculate and override it.
                         // See QUIZ_SHOW_TIME_BEFORE_DEADLINE.
-                        if ($timeremaining === false && $endtime > $now) {
-                            $timeremaining = $endtime - $now;
+                        if ($timeremaining === false && $scheduledend > $now) {
+                            $timeremaining = $scheduledend - $now;
                         }
                     }
                     // Format timeremaining.
@@ -746,6 +759,17 @@ class monitor_manager {
 
         $hastimer = in_array($status, self::INPROGRESS_OR_IDLE) && $timeremaining !== null;
 
+        // End time: when the attempt was due to close, for active and completed attempts alike.
+        // Not started, and no deadline, show a dash, like the Time left column.
+        $endat = null;
+        $endtimedisplay = '—';
+        $endtimedate = '';
+        if ($status !== self::STATUS_NOTSTARTED && $scheduledend !== null) {
+            $endat = $scheduledend;
+            $endtimedisplay = self::format_end_time($endat);
+            $endtimedate = self::format_end_date((int) $attempt->timestart, $endat);
+        }
+
         return (object) [
             'courseid' => (int) $quiz->course,
             'userid' => (int) $user->id,
@@ -767,6 +791,9 @@ class monitor_manager {
             'timeremainingdisplay' => $timeremainingdisplay,
             'searchtext' => self::build_searchtext($user, $showemail),
             'attemptendat' => $attemptendat,
+            'endtime' => $endat,
+            'endtimedisplay' => $endtimedisplay,
+            'endtimedate' => $endtimedate,
             'canextend' => $canextend,
             'hastimer' => $hastimer,
             'hasnote' => false,
@@ -829,6 +856,40 @@ class monitor_manager {
             return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
         return sprintf('%02d:%02d', $minutes, $secs);
+    }
+
+    /**
+     * Format an attempt's end time for the End time column, e.g. "12:15".
+     *
+     * The time is shown in the current user's time zone. Any grace period is not included.
+     * See format_end_date() for the date shown after it when the day changes.
+     *
+     * @param int $endtime Attempt end timestamp.
+     * @return string
+     */
+    public static function format_end_time(int $endtime): string {
+        return userdate($endtime, get_string('strftimetime24', 'langconfig'));
+    }
+
+    /**
+     * Format the day an attempt ends, for the End time column, e.g. "(06-Nov-2026)".
+     *
+     * This is only shown if the attempt ends on a different day from its start,
+     * in the current user's time zone. Otherwise it is ''.
+     * The monitor shows it after the end time, e.g. "00:15 (06-Nov-2026)",
+     * and lets the browser break the line between the two if the column is narrow.
+     *
+     * @param int $starttime Attempt start timestamp.
+     * @param int $endtime Attempt end timestamp.
+     * @return string
+     */
+    public static function format_end_date(int $starttime, int $endtime): string {
+        $dayformat = '%Y-%m-%d';
+        if (userdate($starttime, $dayformat, 99, false) === userdate($endtime, $dayformat, 99, false)) {
+            return '';
+        }
+        $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
+        return get_string('endtime:date', 'quiz_livequizmonitor', userdate($endtime, $dateformat, 99, false));
     }
 
     /**
