@@ -131,40 +131,33 @@ final class monitor_manager_endtime_test extends advanced_testcase {
      */
     public static function format_end_time_provider(): array {
         return [
-            'Same day' => ['2026-11-05 10:00', '2026-11-05 11:30', 0, '11:30', ''],
-            'Leading zero on the hour' => ['2026-11-05 08:00', '2026-11-05 09:05', 0, '09:05', ''],
-            'Different day' => ['2026-11-05 23:30', '2026-11-06 00:15', 0, '00:15', '(06-Nov-2026)'],
-            'Grace period' => ['2026-11-05 11:00', '2026-11-05 12:15', 300, '12:15 ~ 12:20', ''],
-            'Grace period, different day' => ['2026-11-05 23:30', '2026-11-06 00:15', 900, '00:15 ~ 00:30', '(06-Nov-2026)'],
-            'Only the grace period ends on a different day' => [
-                '2026-11-05 22:00', '2026-11-05 23:55', 900, '23:55 ~ 00:10', '(06-Nov-2026)',
-            ],
+            'Same day' => ['2026-11-05 10:00', '2026-11-05 11:30', '11:30', ''],
+            'Leading zero on the hour' => ['2026-11-05 08:00', '2026-11-05 09:05', '09:05', ''],
+            'Different day' => ['2026-11-05 23:30', '2026-11-06 00:15', '00:15', '(06-Nov-2026)'],
         ];
     }
 
     /**
-     * End times are shown as hh:mm, or a range for a grace period, and the date is
-     * shown separately when the attempt ends on a different day from its start.
+     * End times are shown as hh:mm, and the date is shown separately
+     * when the attempt ends on a different day from its start.
      *
      * @dataProvider format_end_time_provider
      * @param string $start Attempt start, local time.
      * @param string $end Attempt end, local time.
-     * @param int $graceperiod Grace period in seconds.
      * @param string $expectedtime Expected end time display.
      * @param string $expecteddate Expected end date display.
      */
     public function test_format_end_time(
         string $start,
         string $end,
-        int $graceperiod,
         string $expectedtime,
         string $expecteddate
     ): void {
         $this->resetAfterTest();
         $this->setTimezone(self::TIMEZONE);
 
-        $this->assertSame($expectedtime, monitor_manager::format_end_time(self::ts($end), $graceperiod));
-        $this->assertSame($expecteddate, monitor_manager::format_end_date(self::ts($start), self::ts($end), $graceperiod));
+        $this->assertSame($expectedtime, monitor_manager::format_end_time(self::ts($end)));
+        $this->assertSame($expecteddate, monitor_manager::format_end_date(self::ts($start), self::ts($end)));
     }
 
     /**
@@ -218,9 +211,9 @@ final class monitor_manager_endtime_test extends advanced_testcase {
     }
 
     /**
-     * A quiz with a grace period shows the end time as a range.
+     * A grace period is not included in the end time.
      */
-    public function test_end_time_with_grace_period(): void {
+    public function test_end_time_ignores_grace_period(): void {
         $this->resetAfterTest();
         $this->setTimezone(self::TIMEZONE);
 
@@ -233,7 +226,7 @@ final class monitor_manager_endtime_test extends advanced_testcase {
 
         $row = $this->get_rows($course, $cm, $quiz)[$student->id];
         $this->assertSame(self::ts('2026-01-15 12:15'), $row->endtime);
-        $this->assertSame('12:15 ~ 12:20', $row->endtimedisplay);
+        $this->assertSame('12:15', $row->endtimedisplay);
     }
 
     /**
@@ -292,7 +285,7 @@ final class monitor_manager_endtime_test extends advanced_testcase {
 
     /**
      * Not started and no deadline show a dash. Completed shows when the attempt was due
-     * to close (with the grace period, as for an active attempt), not when it was submitted.
+     * to close, not when it was submitted.
      */
     public function test_end_time_by_status(): void {
         global $DB;
@@ -324,7 +317,7 @@ final class monitor_manager_endtime_test extends advanced_testcase {
 
         // Started at 10:00 with a 1 hour limit, so due at 11:00, although submitted at 10:42.
         $this->assertSame(self::ts('2026-01-15 11:00'), $rows[$completed->id]->endtime);
-        $this->assertSame('11:00 ~ 11:05', $rows[$completed->id]->endtimedisplay);
+        $this->assertSame('11:00', $rows[$completed->id]->endtimedisplay);
 
         $this->assertNull($rows[$nodeadline->id]->endtime);
         $this->assertSame('—', $rows[$nodeadline->id]->endtimedisplay);

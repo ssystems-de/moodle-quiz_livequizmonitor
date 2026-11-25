@@ -30,7 +30,6 @@ $string['columns:showcolumn'] = 'Spalte „{$a}“ einblenden';
 $string['emptycohort'] = 'Für dieses Quiz wurden keine berechtigten Teilnehmenden gefunden.';
 $string['endtime:date'] = '({$a})';
 $string['endtime:dateformat'] = '%d-%b-%Y';
-$string['endtime:range'] = '{$a->from} ~ {$a->to}';
 $string['error:groupnotvisible'] = 'Sie haben keine Berechtigung, diese Gruppe in diesem Monitor anzuzeigen.';
 $string['error:requestfailed'] = 'Der Server ist nicht erreichbar. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.';
 $string['error:usernotvisible'] = 'Die ausgewählte Person ist in dieser Monitor-Ansicht nicht sichtbar.';

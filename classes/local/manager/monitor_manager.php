@@ -766,12 +766,8 @@ class monitor_manager {
         $endtimedate = '';
         if ($status !== self::STATUS_NOTSTARTED && $scheduledend !== null) {
             $endat = $scheduledend;
-            $graceperiod = 0;
-            if (($quiz->overduehandling ?? '') === 'graceperiod') {
-                $graceperiod = (int) ($quiz->graceperiod ?? 0);
-            }
-            $endtimedisplay = self::format_end_time($endat, $graceperiod);
-            $endtimedate = self::format_end_date((int) $attempt->timestart, $endat, $graceperiod);
+            $endtimedisplay = self::format_end_time($endat);
+            $endtimedate = self::format_end_date((int) $attempt->timestart, $endat);
         }
 
         return (object) [
@@ -865,49 +861,35 @@ class monitor_manager {
     /**
      * Format an attempt's end time for the End time column, e.g. "12:15".
      *
-     * The time is shown in the current user's time zone. If there is a grace period,
-     * the end of the grace period is appended, e.g. "12:15 ~ 12:20".
+     * The time is shown in the current user's time zone. Any grace period is not included.
      * See format_end_date() for the date shown after it when the day changes.
      *
      * @param int $endtime Attempt end timestamp.
-     * @param int $graceperiod Grace period in seconds, or 0 for none.
      * @return string
      */
-    public static function format_end_time(int $endtime, int $graceperiod = 0): string {
-        $timeformat = get_string('strftimetime24', 'langconfig');
-        $display = userdate($endtime, $timeformat);
-
-        if ($graceperiod > 0) {
-            $display = get_string('endtime:range', 'quiz_livequizmonitor', (object) [
-                'from' => $display,
-                'to' => userdate($endtime + $graceperiod, $timeformat),
-            ]);
-        }
-
-        return $display;
+    public static function format_end_time(int $endtime): string {
+        return userdate($endtime, get_string('strftimetime24', 'langconfig'));
     }
 
     /**
      * Format the day an attempt ends, for the End time column, e.g. "(06-Nov-2026)".
      *
-     * This is only shown if the attempt finally ends (including any grace period) on a
-     * different day from its start, in the current user's time zone. Otherwise it is ''.
-     * The monitor shows it after the end time, e.g. "23:55 ~ 00:10 (06-Nov-2026)",
+     * This is only shown if the attempt ends on a different day from its start,
+     * in the current user's time zone. Otherwise it is ''.
+     * The monitor shows it after the end time, e.g. "00:15 (06-Nov-2026)",
      * and lets the browser break the line between the two if the column is narrow.
      *
      * @param int $starttime Attempt start timestamp.
      * @param int $endtime Attempt end timestamp.
-     * @param int $graceperiod Grace period in seconds, or 0 for none.
      * @return string
      */
-    public static function format_end_date(int $starttime, int $endtime, int $graceperiod = 0): string {
-        $finalend = $endtime + max(0, $graceperiod);
+    public static function format_end_date(int $starttime, int $endtime): string {
         $dayformat = '%Y-%m-%d';
-        if (userdate($starttime, $dayformat, 99, false) === userdate($finalend, $dayformat, 99, false)) {
+        if (userdate($starttime, $dayformat, 99, false) === userdate($endtime, $dayformat, 99, false)) {
             return '';
         }
         $dateformat = get_string('endtime:dateformat', 'quiz_livequizmonitor');
-        return get_string('endtime:date', 'quiz_livequizmonitor', userdate($finalend, $dateformat, 99, false));
+        return get_string('endtime:date', 'quiz_livequizmonitor', userdate($endtime, $dateformat, 99, false));
     }
 
     /**
